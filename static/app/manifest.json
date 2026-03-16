@@ -1,0 +1,101 @@
+{
+  "name": "Mannschaftskasse TSV Alteglofsheim",
+  "short_name": "TSV Mannschaftskasse",
+  "description": "Die digitale Mannschaftskasse für den TSV Alteglofsheim.",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#212529",
+  "categories": ["sports", "finance", "productivity"],
+  "lang": "de",
+  "screenshots": [
+    {
+      "src": "/static/images/tsv-alteglofsheim.jpg",
+      "sizes": "390x844",
+      "type": "image/jpeg",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/static/images/tsv-alteglofsheim.jpg", 
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Spielerübersicht",
+      "short_name": "Spieler",
+      "description": "Zeige alle Spieler und ihre Kontostände",
+      "url": "/?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "/static/images/tsv-alteglofsheim.jpg",
+          "sizes": "96x96",
+          "type": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "name": "Gruppenerinnerung",
+      "short_name": "Erinnerung",
+      "description": "Übersicht der offenen Beträge",
+      "url": "/schulden?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "/static/images/tsv-alteglofsheim.jpg",
+          "sizes": "96x96", 
+          "type": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "name": "Mannschaftskasse",
+      "short_name": "Kasse",
+      "description": "Aktueller Kassenstand",
+      "url": "/kasse?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "/static/images/tsv-alteglofsheim.jpg",
+          "sizes": "96x96",
+          "type": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "name": "Strafenkatalog",
+      "short_name": "Strafen",
+      "description": "Alle Strafen im Überblick",
+      "url": "/strafenkatalog?utm_source=pwa_shortcut",
+      "icons": [
+        {
+          "src": "/static/images/tsv-alteglofsheim.jpg",
+          "sizes": "96x96",
+          "type": "image/jpeg"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/static/images/tsv-alteglofsheim.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/tsv-alteglofsheim.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/images/tsv-alteglofsheim.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ]
+}

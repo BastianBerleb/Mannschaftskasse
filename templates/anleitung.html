@@ -1,0 +1,180 @@
+<!-- templates/anleitung.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Hilfe & Anleitung</h1>
+
+<div class="accordion" id="anleitungAccordion">
+
+     <!-- 1. Erste Schritte (Für Jedermann) -->
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingBasics">
+            <button class="accordion-button {% if not current_user.is_authenticated %}show{% else %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBasics" aria-expanded="true" aria-controls="collapseBasics">
+                Erste Schritte & App-Installation
+            </button>
+        </h2>
+        <div id="collapseBasics" class="accordion-collapse collapse {% if not current_user.is_authenticated %}show{% endif %}" aria-labelledby="headingBasics" data-bs-parent="#anleitungAccordion">
+            <div class="accordion-body">
+                <p>Willkommen bei der digitalen Mannschaftskasse des TSV Alteglofsheim!</p>
+        
+                <div class="alert alert-primary">
+                    <i class="bi bi-person-badge-fill"></i> <strong>Benutzerkonto erforderlich:</strong><br>
+                    Um die App nutzen zu können, benötigt jeder Spieler ein eigenes Konto. 
+                    Bitte klicke im Menü auf <strong>Registrieren</strong>, falls du noch keinen Zugang hast.
+                </div>
+
+                <h5 class="mt-4"><i class="bi bi-phone"></i> Installation am Handy (PWA)</h5>
+                <p>Installiere diese Seite als "App" für den schnellsten Zugriff und Push-Nachrichten.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6>🤖 Android (Chrome)</h6>
+                                <ol class="mb-0 small">
+                                    <li>Öffne das Menü (drei Punkte ⋮).</li>
+                                    <li>Wähle "App installieren" oder "Zum Startbildschirm".</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6>🍎 iOS (Safari)</h6>
+                                <ol class="mb-0 small">
+                                    <li>Tippe unten auf das "Teilen"-Symbol <i class="bi bi-box-arrow-up"></i>.</li>
+                                    <li>Wähle <strong>"Zum Home-Bildschirm"</strong>.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="mt-4"><i class="bi bi-bell"></i> Push-Benachrichtigungen</h5>
+                <p>Möchtest du informiert werden, wenn dir eine Strafe eingetragen wurde?</p>
+                <ol>
+                    <li>Installiere die App (siehe oben).</li>
+                    <li>Öffne die installierte App.</li>
+                    <li>Klicke auf der Startseite auf deinen eigenen Namen.</li>
+                    <li>Aktiviere den Button <strong>"🌟 Ich bin dieser Spieler!"</strong>.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Funktionen für Spieler -->
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingPlayer">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePlayer" aria-expanded="false" aria-controls="collapsePlayer">
+                Funktionen für Spieler
+            </button>
+        </h2>
+        <div id="collapsePlayer" class="accordion-collapse collapse" aria-labelledby="headingPlayer" data-bs-parent="#anleitungAccordion">
+            <div class="accordion-body">
+                <h6>Das Menü erklärt:</h6>
+                <ul>
+                    <li><strong>Spielerübersicht:</strong> Die Startseite. Zeigt alle aktiven Spieler und deren Guthaben/Schulden.</li>
+                    <li><strong>Mein Profil (Klick auf Namen):</strong> 
+                        Hier siehst du deine persönlichen Statistiken, alle Transaktionen ("Was hab ich wann gezahlt?") und kannst deine Schulden via PayPal begleichen.
+                    </li>
+                    <li><strong>Strafenkatalog:</strong> Eine Übersicht, was wie viel kostet.</li>
+                    <li><strong>Spieltag-Log:</strong> Archiv aller vergangenen Spiele. Wer war dabei? Wer hat gespielt?</li>
+                </ul>
+                <div class="alert alert-secondary small">
+                    <i class="bi bi-info-circle"></i> Inaktive Spieler ("Backlog") werden in der Übersicht ausgeblendet. Du findest sie aber jederzeit über die <strong>Suche</strong> (Lupe oben rechts).
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Anleitung für Strafen-Manager -->
+    {% if current_user.is_authenticated and current_user.role in ['strafen_manager_1', 'strafen_manager_2', 'admin', 'auditor'] %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingManager">
+            <button class="accordion-button {% if current_user.role not in ['admin', 'auditor'] %}show{% else %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManager" aria-expanded="{% if current_user.role not in ['admin', 'auditor'] %}true{% else %}false{% endif %}" aria-controls="collapseManager">
+                Für Manager & Kassenwarte
+            </button>
+        </h2>
+        <div id="collapseManager" class="accordion-collapse collapse {% if current_user.role not in ['admin', 'auditor'] %}show{% endif %}" aria-labelledby="headingManager" data-bs-parent="#anleitungAccordion">
+            <div class="accordion-body">
+                <p>Als Manager hast du erweiterten Zugriff auf die Kassenführung deiner Mannschaft.</p>
+
+                <h6>Zusätzliche Menüpunkte:</h6>
+                <ul>
+                    <li><strong>Mannschaftskasse:</strong> Zeigt den aktuellen Kontostand und Einnahmen/Ausgaben der Saison.</li>
+                    <li><strong>Admin:</strong> Dein Haupt-Arbeitsbereich zum Buchen.</li>
+                </ul>
+
+                <h6>Strafen & Gebühren buchen (im Admin-Bereich):</h6>
+                <ul>
+                    <li>Nutze <strong>"Strafe (Katalog)"</strong> für schnelle Standard-Buchungen.</li>
+                    <li>Nutze <strong>"Individuell"</strong> für spezielle Beträge.</li>
+                    <li><strong>Spielgebühr:</strong> Nutze den Tab "Spielgebühr", um schnell für den ganzen Kader abzurechnen (Tipp: "FuPa-Import" spart Zeit!).</li>
+                    <li><strong>Kistl:</strong> Verwalte die Bierkasse separat.</li>
+                </ul>
+
+                <div class="alert alert-warning mt-3">
+                    <h6><i class="bi bi-clock-history"></i> Die 24-Stunden-Regel</h6>
+                    <p class="mb-0">
+                        Du hast dich vertippt? Kein Problem.<br>
+                        Du kannst Buchungen, die <strong>du (oder dein Team-Manager)</strong> erstellt hast, innerhalb von <strong>24 Stunden</strong> löschen. 
+                        Klicke dazu im Admin-Log auf das rote "X".<br>
+                        <em>Nach 24 Stunden kann nur noch ein Haupt-Admin die Buchung stornieren.</em>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- 4. Anleitung für Admins -->
+    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingAdmin">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdmin" aria-expanded="false" aria-controls="collapseAdmin">
+                Für Admins (Erweitert)
+            </button>
+        </h2>
+        <div id="collapseAdmin" class="accordion-collapse collapse" aria-labelledby="headingAdmin" data-bs-parent="#anleitungAccordion">
+            <div class="accordion-body">
+                <p>Als Admin hast du die Kontrolle über alle Daten und Einstellungen.</p>
+                
+                <h6>Exklusive Rechte:</h6>
+                <ul>
+                    <li><strong>Unbegrenztes Löschen:</strong> Du kannst jede Transaktion im Log löschen, egal wie alt sie ist oder wer sie erstellt hat.</li>
+                    <li><strong>Spieler verwalten:</strong> Du kannst Spieler anlegen, bearbeiten oder löschen (auch im Backlog).</li>
+                    <li><strong>Strafenkatalog:</strong> Du definierst die Preise.</li>
+                    <li><strong>Setup:</strong> Du kannst Kassenstände korrigieren und die Saison verwalten.</li>
+                </ul>
+                
+                <h6>Tipp: Saison-Wechsel</h6>
+                <p class="small text-muted">Achte darauf, dass beim Saisonwechsel die Funktion "Saison abschließen" im Setup genutzt wird, um die Salden sauber zu übertragen.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- 5. Anleitung für Auditoren -->
+    {% if current_user.is_authenticated and current_user.role == 'auditor' %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="headingAuditor">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAuditor" aria-expanded="false" aria-controls="collapseAuditor">
+                Für Auditoren (Prüfer)
+            </button>
+        </h2>
+        <div id="collapseAuditor" class="accordion-collapse collapse" aria-labelledby="headingAuditor" data-bs-parent="#anleitungAccordion">
+            <div class="accordion-body">
+                <p>Modus: <strong>Nur-Lesen</strong></p>
+                <ul>
+                    <li>Du hast Einblick in <strong>alle Bereiche</strong> (auch Admin & Kasse).</li>
+                    <li>Du siehst im Transaktions-Log genau, <strong>wer</strong> eine Buchung erstellt hat ("Ersteller"-Spalte).</li>
+                    <li>Du kannst keine Daten verändern oder löschen.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

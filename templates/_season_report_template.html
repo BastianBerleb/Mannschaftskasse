@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF--8">
+    <title>Saisonbericht {{ season_str }}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #333;
+        }
+        @page {
+            size: A4;
+            margin: 2cm;
+            @bottom-center {
+                content: "Seite " counter(page) " von " counter(pages);
+                font-size: 8pt;
+                color: #888;
+            }
+        }
+        h1, h2, h3 {
+            font-weight: 500;
+            color: #000;
+            margin-top: 1.5em;
+            margin-bottom: 0.8em;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        h1 {
+            font-size: 24pt;
+            text-align: center;
+            border-bottom: 2px solid #000;
+        }
+        h2 { font-size: 16pt; }
+        h3 { font-size: 12pt; border-bottom: none; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .text-end { text-align: right; }
+        .text-success { color: green; }
+        .text-danger { color: red; }
+        .summary-table td:first-child { font-weight: bold; width: 60%; }
+        .footer {
+            position: fixed;
+            bottom: -1.5cm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 8pt;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="footer">
+        Mannschaftskasse TSV Alteglofsheim
+    </div>
+
+    <h1>Saisonabschluss-Bericht</h1>
+    <h3>Saison {{ season_str }}</h3>
+    <p style="text-align: right; color: #555;">Erstellt am: {{ generation_date.strftime('%d.%m.%Y um %H:%M Uhr') }}</p>
+
+    <h2>Finanzielle Zusammenfassung</h2>
+    
+    <table class="summary-table" style="margin-bottom: 30px;">
+        <thead>
+            <tr>
+                <th style="width: 40%;">Position</th>
+                <th class="text-end" style="width: 20%;">Gesamt</th>
+                <th class="text-end" style="width: 20%;">Team 1</th>
+                <th class="text-end" style="width: 20%;">Team 2</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Kassenstand Saisonbeginn</td>
+                <td class="text-end">{{ "%.2f €"|format(kasse_start) }}</td>
+                <td class="text-end" style="color: #666;">{{ "%.2f €"|format(kasse_start_t1) }}</td>
+                <td class="text-end" style="color: #666;">{{ "%.2f €"|format(kasse_start_t2) }}</td>
+            </tr>
+            <tr>
+                <td>+ Einnahmen (Einzahlungen)</td>
+                <td class="text-end text-success">+ {{ "%.2f €"|format(season_income) }}</td>
+                <td class="text-end text-success" style="font-size: 0.9em;">+ {{ "%.2f €"|format(income_team1) }}</td>
+                <td class="text-end text-success" style="font-size: 0.9em;">+ {{ "%.2f €"|format(income_team2) }}</td>
+            </tr>
+            <tr>
+                <td>- Ausgaben (Teamausgaben)</td>
+                <td class="text-end text-danger">- {{ "%.2f €"|format(season_expenses_total) }}</td>
+                <td class="text-end text-danger" style="font-size: 0.9em;">- {{ "%.2f €"|format(expenses_team1) }}</td>
+                <td class="text-end text-danger" style="font-size: 0.9em;">- {{ "%.2f €"|format(expenses_team2) }}</td>
+            </tr>
+            <tr style="font-weight: bold; background-color: #f2f2f2; border-top: 2px solid #aaa;">
+                <td>Kassenstand Saisonende</td>
+                <td class="text-end">{{ "%.2f €"|format(kasse_end) }}</td>
+                <td class="text-end">{{ "%.2f €"|format(kasse_end_t1) }}</td>
+                <td class="text-end">{{ "%.2f €"|format(kasse_end_t2) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Spieler-Salden zum Saisonende</h2>
+    <p>Hinweis: Positive Salden bedeuten Guthaben, negative offene Schulden.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Spieler</th>
+                <th class="text-end">Gesamt</th>
+                <th class="text-end">Team 1</th>
+                <th class="text-end">Team 2</th>
+                <th class="text-end">Kistl</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in player_balances %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td class="text-end {% if p.money_balance < 0 %}text-danger{% else %}text-success{% endif %}" style="font-weight: bold;">
+                    {{ "%.2f €"|format(p.money_balance) }}
+                </td>
+                <td class="text-end {% if p.money_balance_t1 < 0 %}text-danger{% elif p.money_balance_t1 > 0 %}text-success{% endif %}">
+                    {{ "%.2f €"|format(p.money_balance_t1) }}
+                </td>
+                <td class="text-end {% if p.money_balance_t2 < 0 %}text-danger{% elif p.money_balance_t2 > 0 %}text-success{% endif %}">
+                    {{ "%.2f €"|format(p.money_balance_t2) }}
+                </td>
+                <td class="text-end {% if p.kistl_balance < 0 %}text-danger{% endif %}">
+                    {{ p.kistl_balance|int }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Detail-Auflistung Teamausgaben</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Datum</th>
+                <th style="width: 10%;">Team</th>
+                <th>Beschreibung</th>
+                <th class="text-end" style="width: 20%;">Betrag</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for expense in expense_details %}
+            <tr>
+                <td>{{ expense.date.strftime('%d.%m.%Y') }}</td>
+                <td>
+                    {% if expense.team == 'team1' %}Team 1{% else %}Team 2{% endif %}
+                </td>
+                <td>{{ expense.description }}</td>
+                <td class="text-end text-danger">- {{ "%.2f €"|format(expense.amount) }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" style="text-align: center;">In dieser Saison gab es keine Teamausgaben.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>

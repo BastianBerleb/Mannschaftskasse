@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Offline Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .online { background: #d4edda; color: #155724; }
+        .offline { background: #f8d7da; color: #721c24; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 PWA Offline-Modus Test</h1>
+    
+    <div class="card">
+        <h2>Verbindungsstatus</h2>
+        <div id="connection-status" class="status">Prüfe...</div>
+    </div>
+    
+    <div class="card">
+        <h2>Service Worker Status</h2>
+        <div id="sw-status">Prüfe...</div>
+        <button onclick="testCache()">Cache testen</button>
+        <button onclick="clearCache()">Cache löschen</button>
+        <button onclick="updateSW()">SW Update</button>
+    </div>
+    
+    <div class="card">
+        <h2>Offline-Test</h2>
+        <p>1. Klicke "Cache laden"</p>
+        <p>2. Gehe offline (Netzwerk deaktivieren)</p>
+        <p>3. Klicke "Offline-Test" - sollte funktionieren</p>
+        <button onclick="loadCache()">Cache laden</button>
+        <button onclick="offlineTest()">Offline-Test</button>
+    </div>
+    
+    <div class="card">
+        <h2>Debug-Log</h2>
+        <button onclick="clearLog()">Log löschen</button>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+        const swStatus = document.getElementById('sw-status');
+        const connectionStatus = document.getElementById('connection-status');
+        
+        // Logging-Funktion
+        function logMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            log.textContent += `[${timestamp}] ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLog() {
+            log.textContent = '';
+        }
+        
+        // Verbindungsstatus überwachen
+        function updateConnectionStatus() {
+            const online = navigator.onLine;
+            connectionStatus.textContent = online ? '🟢 Online' : '🔴 Offline';
+            connectionStatus.className = `status ${online ? 'online' : 'offline'}`;
+        }
+        
+        window.addEventListener('online', () => {
+            updateConnectionStatus();
+            logMessage('🟢 Verbindung wiederhergestellt');
+        });
+        
+        window.addEventListener('offline', () => {
+            updateConnectionStatus();
+            logMessage('🔴 Verbindung getrennt');
+        });
+        
+        // Service Worker registrieren
+        if ('serviceWorker' in navigator) {
+            logMessage('🔧 Service Worker wird registriert...');
+            
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(registration => {
+                    logMessage('✅ Service Worker registriert');
+                    swStatus.textContent = '✅ Aktiv';
+                    
+                    registration.addEventListener('updatefound', () => {
+                        logMessage('🔄 Service Worker Update gefunden');
+                    });
+                })
+                .catch(error => {
+                    logMessage('❌ Service Worker Fehler: ' + error.message);
+                    swStatus.textContent = '❌ Fehler';
+                });
+                
+            // Service Worker Messages
+            navigator.serviceWorker.addEventListener('message', event => {
+                logMessage('📨 SW Message: ' + event.data);
+            });
+        } else {
+            logMessage('❌ Service Worker nicht unterstützt');
+            swStatus.textContent = '❌ Nicht unterstützt';
+        }
+        
+        // Test-Funktionen
+        async function testCache() {
+            try {
+                const cache = await caches.open('mannschaftskasse-v2.3');
+                const keys = await cache.keys();
+                logMessage(`📦 Cache enthält ${keys.length} Einträge`);
+                keys.forEach(req => {
+                    logMessage(`  - ${req.url}`);
+                });
+            } catch (error) {
+                logMessage('❌ Cache-Test Fehler: ' + error.message);
+            }
+        }
+        
+        async function clearCache() {
+            try {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => caches.delete(name)));
+                logMessage('🗑️ Alle Caches gelöscht');
+            } catch (error) {
+                logMessage('❌ Cache-Lösch-Fehler: ' + error.message);
+            }
+        }
+        
+        async function updateSW() {
+            try {
+                const registration = await navigator.serviceWorker.getRegistration();
+                if (registration) {
+                    await registration.update();
+                    logMessage('🔄 Service Worker Update ausgelöst');
+                }
+            } catch (error) {
+                logMessage('❌ SW-Update Fehler: ' + error.message);
+            }
+        }
+        
+        async function loadCache() {
+            try {
+                logMessage('📥 Lade kritische Dateien in Cache...');
+                
+                const cache = await caches.open('mannschaftskasse-v2.3');
+                const urls = [
+                    '/',
+                    '/offline',
+                    window.location.href
+                ];
+                
+                for (const url of urls) {
+                    try {
+                        const response = await fetch(url);
+                        if (response.ok) {
+                            await cache.put(url, response);
+                            logMessage(`✅ Gecacht: ${url}`);
+                        }
+                    } catch (error) {
+                        logMessage(`❌ Fehler bei ${url}: ${error.message}`);
+                    }
+                }
+                
+                logMessage('✅ Cache-Laden abgeschlossen');
+            } catch (error) {
+                logMessage('❌ Cache-Laden Fehler: ' + error.message);
+            }
+        }
+        
+        async function offlineTest() {
+            try {
+                logMessage('🧪 Offline-Test startet...');
+                
+                // Test verschiedene URLs
+                const testUrls = ['/', '/offline', window.location.href];
+                
+                for (const url of testUrls) {
+                    try {
+                        const response = await fetch(url);
+                        logMessage(`${response.ok ? '✅' : '❌'} ${url}: ${response.status}`);
+                    } catch (error) {
+                        logMessage(`❌ ${url}: ${error.message}`);
+                    }
+                }
+                
+                logMessage('🧪 Offline-Test abgeschlossen');
+            } catch (error) {
+                logMessage('❌ Offline-Test Fehler: ' + error.message);
+            }
+        }
+        
+        // Initial-Setup
+        updateConnectionStatus();
+        logMessage('🚀 PWA Test-Seite geladen');
+    </script>
+</body>
+</html>

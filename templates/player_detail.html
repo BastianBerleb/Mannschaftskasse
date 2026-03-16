@@ -1,0 +1,581 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    /* Shared Design System overrides with premium.css */
+    :root {
+        --card-bg: #ffffff;
+        --card-shadow: var(--shadow-sm);
+        --primary-color: var(--bs-primary);
+        --success-color: var(--bs-success);
+        --danger-color: var(--bs-danger);
+        --bg-color: var(--app-bg);
+        --text-main: #212529;
+        --text-sub: #6c757d;
+        --border-color: #f1f3f5;
+        --avatar-bg: #ffffff;
+    }
+
+    html[data-theme="dark"] {
+        --card-bg: var(--bs-secondary-bg);
+        --text-main: #f1f5f9;
+        --text-sub: #94a3b8;
+        --border-color: rgba(255,255,255,0.08);
+        --avatar-bg: #334155;
+    }
+
+    /* Hero Profile Card */
+    .profile-card {
+        background: var(--card-bg);
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--shadow-md);
+        padding: 2rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+    }
+    
+    .profile-bg-pattern {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 120px;
+        background: linear-gradient(135deg, var(--bg-color) 0%, var(--border-color) 100%);
+        z-index: 0;
+    }
+
+    .profile-avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: var(--avatar-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--text-sub);
+        margin: 0 auto 1rem;
+        position: relative;
+        z-index: 1;
+        border: 4px solid var(--card-bg);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .profile-avatar.is-positive { background-color: #d1e7dd; color: #0f5132; }
+    .profile-avatar.is-negative { background-color: #f8d7da; color: #842029; }
+    .profile-avatar.is-neutral { background-color: var(--avatar-bg); color: var(--text-sub); }
+
+    .profile-name {
+        position: relative;
+        z-index: 1;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        color: var(--text-main);
+    }
+
+    /* Balance Cards Big */
+    .balance-card-lg {
+        padding: 1rem 1.25rem;
+        border-radius: 16px;
+        font-weight: 700;
+        min-width: 140px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .balance-card-lg.positive { background-color: #d1e7dd; color: #0f5132; }
+    .balance-card-lg.negative { background-color: #f8d7da; color: #842029; }
+    .balance-card-lg.neutral { background-color: var(--avatar-bg); color: var(--text-sub); border: 1px solid var(--border-color); }
+    
+    .b-sub-row {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(0,0,0,0.1);
+        gap: 1rem;
+        font-weight: 600;
+        opacity: 0.85;
+    }
+
+    /* Action Cards (Payment) */
+    .action-card {
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+        transition: transform 0.2s;
+        height: 100%;
+    }
+    .action-card:active { transform: scale(0.98); }
+    
+    .paypal-btn {
+        background: #0070ba; /* PayPal Blue */
+        color: white;
+        border: none;
+        border-radius: 50rem;
+        padding: 0.75rem 1.5rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        transition: background 0.2s;
+        text-decoration: none;
+    }
+    .paypal-btn:hover { background: #005ea6; color: white; }
+
+    /* Stats Cards */
+    .stat-card-mini {
+        background: var(--card-bg);
+        border-radius: 12px;
+        padding: 0.75rem;
+        text-align: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        border: 1px solid var(--border-color);
+        height: 100%;
+        color: var(--text-main);
+    }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-sub); font-weight: 600; margin-bottom: 0.25rem; }
+    .stat-value { font-weight: 700; font-size: 1.1rem; }
+
+    /* Transaction List */
+    .tx-card {
+        background: var(--card-bg);
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+    }
+    
+    .tx-item {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .tx-item:last-child { border-bottom: none; }
+    
+    .tx-date { font-size: 0.75rem; color: #adb5bd; font-weight: 600; }
+    .tx-desc { font-weight: 600; color: var(--text-main); font-size: 0.95rem; }
+    .tx-amount { font-weight: 700; font-size: 1rem; }
+    .transaction-kistl { color: #856404; font-weight: bold; }
+    
+    .view-btn {
+        border-radius: 50rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-sub);
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        display: inline-block;
+        text-decoration: none;
+    }
+
+    /* === DARK MODE === */
+    html[data-theme="dark"] .profile-avatar {
+        border-color: var(--card-bg) !important;
+    }
+    html[data-theme="dark"] .tx-date {
+        color: #64748b !important;
+    }
+    html[data-theme="dark"] .balance-card-lg.neutral {
+        background-color: #334155 !important;
+        color: #94a3b8 !important;
+        border-color: #475569 !important;
+    }
+    /* Team bilanz boxes that use bg-white */
+    html[data-theme="dark"] .bg-white {
+        background-color: var(--card-bg) !important;
+        color: var(--text-main);
+    }
+    html[data-theme="dark"] .dropdown-menu {
+        background: #1e293b !important;
+        border: 1px solid #334155 !important;
+    }
+    html[data-theme="dark"] .dropdown-item {
+        color: #e2e8f0 !important;
+    }
+    html[data-theme="dark"] .dropdown-item:hover,
+    html[data-theme="dark"] .dropdown-item:focus {
+        background: #334155 !important;
+    }
+    html[data-theme="dark"] .alert.bg-light {
+        background: #334155 !important;
+        color: #e2e8f0 !important;
+        border-color: #475569 !important;
+    }
+    html[data-theme="dark"] #push-notification-container {
+        background: var(--card-bg) !important;
+    }
+</style>
+
+{% set initials = player.name[:1] + (player.name.split(' ')[-1][:1] if ' ' in player.name else '') %}
+{% set is_negative = player.balance_team1 < 0 or player.balance_team2 < 0 %}
+{% set is_positive = player.balance_team1 > 0 and player.balance_team2 > 0 %}
+
+<!-- Navigation / Breadcrumb -->
+<div class="mb-3 ps-1">
+    <a href="{{ url_for('index') }}" class="text-decoration-none text-muted fw-bold small">
+        <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+    </a>
+</div>
+
+<!-- 1. HERO PROFILE CARD -->
+<div class="profile-card">
+    <div class="profile-bg-pattern"></div>
+    
+    <div class="profile-avatar {% if is_negative %}is-negative{% elif is_positive %}is-positive{% else %}is-neutral{% endif %}"
+         style="{% if player.image_path %}padding:0; overflow:hidden; border: 4px solid white;{% endif %}">
+        {% if player.image_path %}
+             <img src="{{ url_for('static', filename=player.image_path.replace('static/', '')) }}" alt="{{ player.name }}" style="width:100%; height:100%; object-fit:cover;">
+        {% else %}
+             {{ initials }}
+        {% endif %}
+    </div>
+    
+    <h1 class="profile-name h2">{{ player.name }}</h1>
+    
+    <!-- Badges Row -->
+    <div class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
+        {% if player.kistl_balance < 0 %}
+        <span class="badge bg-warning text-dark border border-warning shadow-sm rounded-pill px-3 py-2">
+            🍺 {{ player.kistl_balance * -1 }} Kistl
+        </span>
+        {% endif %}
+        
+        <!-- Push Icon Slot (Managed by JS) -->
+        <span id="push-status-badge" class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-10 rounded-pill px-3 py-2" style="display:none;">
+            📱 App Aktiv
+        </span>
+    </div>
+
+    <!-- Big Balance Display -->
+    <div class="d-flex justify-content-center gap-3 flex-wrap">
+        {% if player.balance_team1 != 0 or player.general_balance_team1 != 0 or player.fine_balance_team1 != 0 or (player.balance_team1 == 0 and player.balance_team2 == 0) %}
+        <div class="balance-card-lg {% if player.balance_team1 >= 0 %}positive{% else %}negative{% endif %}">
+            <span class="text-uppercase opacity-75 mb-1" style="font-size: 0.75rem; letter-spacing: 0.5px;">Team 1 Gesamt</span>
+            <div class="fs-4 mb-1">{{ "%.2f"|format(player.balance_team1) }} €</div>
+            {% if player.balance_team1 < 0 %}
+            <div class="b-sub-row">
+                <span>Trikot: {{ "%.2f"|format(player.general_balance_team1) }} €</span>
+                <span>Strafe: {{ "%.2f"|format(player.fine_balance_team1) }} €</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if player.balance_team2 != 0 or player.general_balance_team2 != 0 or player.fine_balance_team2 != 0 %}
+        <div class="balance-card-lg {% if player.balance_team2 >= 0 %}positive{% else %}negative{% endif %}">
+            <span class="text-uppercase opacity-75 mb-1" style="font-size: 0.75rem; letter-spacing: 0.5px;">Team 2 Gesamt</span>
+            <div class="fs-4 mb-1">{{ "%.2f"|format(player.balance_team2) }} €</div>
+            {% if player.balance_team2 < 0 %}
+             <div class="b-sub-row">
+                <span>Trikot: {{ "%.2f"|format(player.general_balance_team2) }} €</span>
+                <span>Strafe: {{ "%.2f"|format(player.fine_balance_team2) }} €</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 2. ALERTS (Urgent Actions) -->
+{% set oldest_fine = player.oldest_unpaid_fine %}
+{% if oldest_fine %}
+    {% set deadline = get_deadline(oldest_fine.date) %}
+    {% set days = (deadline - now.date()).days %}
+    
+    <div class="alert {% if days < 0 %}bg-danger text-white{% elif days < 3 %}bg-warning text-dark{% else %}bg-light text-dark border{% endif %} rounded-4 shadow-sm border-0 mb-4 p-3" role="alert">
+        <div class="d-flex align-items-center">
+            <div class="fs-1 me-3 opacity-50">
+               {% if days < 0 %}🚨{% elif days < 3 %}⚠️{% else %}ℹ️{% endif %}
+            </div>
+            <div>
+                <h6 class="fw-bold mb-1">Offene Strafe!</h6>
+                 <p class="mb-0 small lh-sm">
+                    <strong>{{ oldest_fine.description }}</strong> ({{ "%.2f"|format(oldest_fine.amount|abs) }} €)<br>
+                    Fällig bis: {{ deadline.strftime('%d.%m.') }} 
+                    <strong>({% if days < 0 %}Überfällig!{% elif days == 0 %}Heute!{% else %}{{ days }} Tage{% endif %})</strong>
+                </p>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+
+<!-- 3. PAYMENT ACTIONS (If Debt) -->
+{% if player.balance_team1 < 0 or player.balance_team2 < 0 %}
+<div class="row g-3 mb-4">
+    {% set split_t1_gen = settings.get('paypal_link_team1_general', '') %}
+    {% set split_t1_fine = settings.get('paypal_link_team1_fine', '') %}
+    {% set split_t2_gen = settings.get('paypal_link_team2_general', '') %}
+    {% set split_t2_fine = settings.get('paypal_link_team2_fine', '') %}
+
+    {% if player.balance_team1 < 0 %}
+    <div class="col-md-6">
+        <div class="card action-card border-0 h-100">
+            <div class="card-body p-4 text-center d-flex flex-column justify-content-center">
+                <h6 class="text-muted text-uppercase small fw-bold mb-3">Schulden Team 1</h6>
+                <div class="fs-2 fw-bold text-danger mb-3">{{ "%.2f"|format(player.balance_team1) }} €</div>
+                
+                {% if (split_t1_gen == split_t1_fine and split_t1_gen) or (not split_t1_gen and not split_t1_fine) %}
+                    {% if split_t1_gen %}
+                        <a href="{{ split_t1_gen }}/{{ '%.2f'|format(player.balance_team1 * -1) }}" target="_blank" class="paypal-btn shadow-sm mb-2 w-100 d-inline-block">
+                            <i class="bi bi-paypal"></i> Gesamt bezahlen ({{ "%.2f"|format(player.balance_team1 * -1) }} €)
+                        </a>
+                    {% else %}
+                        <button type="button" class="paypal-btn shadow-sm mb-2 w-100" onclick="alert('Bitte am Spieltag / bei der Versammlung bar bezahlen.');" style="background: #28a745;">
+                            <i class="bi bi-cash-coin"></i> Bar bezahlen ({{ "%.2f"|format(player.balance_team1 * -1) }} €)
+                        </button>
+                    {% endif %}
+                {% else %}
+                    <div class="d-flex flex-column gap-2 mb-2">
+                    {% if player.general_balance_team1 < 0 %}
+                        {% if split_t1_gen %}
+                            <a href="{{ split_t1_gen }}/{{ '%.2f'|format(player.general_balance_team1 * -1) }}" target="_blank" class="paypal-btn shadow-sm w-100 d-inline-block" style="font-size: 0.9rem;">
+                                <i class="bi bi-paypal"></i> Trikot ({{ "%.2f"|format(player.general_balance_team1 * -1) }} €)
+                            </a>
+                        {% else %}
+                            <button type="button" class="paypal-btn shadow-sm w-100" onclick="alert('Bitte das Trikotgeld bar bezahlen.');" style="background: #28a745; font-size: 0.9rem;">
+                                <i class="bi bi-cash-coin"></i> Trikot ({{ "%.2f"|format(player.general_balance_team1 * -1) }} €)
+                            </button>
+                        {% endif %}
+                    {% endif %}
+                    
+                    {% if player.fine_balance_team1 < 0 %}
+                        {% if split_t1_fine %}
+                            <a href="{{ split_t1_fine }}/{{ '%.2f'|format(player.fine_balance_team1 * -1) }}" target="_blank" class="paypal-btn shadow-sm w-100 d-inline-block" style="font-size: 0.9rem;">
+                                <i class="bi bi-paypal"></i> Strafe ({{ "%.2f"|format(player.fine_balance_team1 * -1) }} €)
+                            </a>
+                        {% else %}
+                            <button type="button" class="paypal-btn shadow-sm w-100" onclick="alert('Bitte die Strafen bar bezahlen.');" style="background: #28a745; font-size: 0.9rem;">
+                                <i class="bi bi-cash-coin"></i> Strafe ({{ "%.2f"|format(player.fine_balance_team1 * -1) }} €)
+                            </button>
+                        {% endif %}
+                    {% endif %}
+                    </div>
+                {% endif %}
+
+                {% set mail_t1_gen = settings.get('paypal_email_team1_general', '') %}
+                {% set mail_t1_fine = settings.get('paypal_email_team1_fine', '') %}
+                {% if mail_t1_gen or mail_t1_fine %}
+                <div class="mt-2 text-muted user-select-all" style="font-size: 0.75rem;">
+                    {% if (mail_t1_gen == mail_t1_fine and mail_t1_gen) or (not mail_t1_fine and split_t1_gen == split_t1_fine) or (not mail_t1_gen and split_t1_gen == split_t1_fine) %}
+                        {% set single_mail = mail_t1_gen if mail_t1_gen else mail_t1_fine %}
+                        <small class="d-block">{{ single_mail }}</small>
+                    {% else %}
+                        {% if mail_t1_gen and player.general_balance_team1 < 0 %}<small class="d-block">Trikot/Sonstiges: {{ mail_t1_gen }}</small>{% endif %}
+                        {% if mail_t1_fine and player.fine_balance_team1 < 0 %}<small class="d-block">Strafen: {{ mail_t1_fine }}</small>{% endif %}
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if player.balance_team2 < 0 %}
+    <div class="col-md-6">
+        <div class="card action-card border-0 h-100">
+            <div class="card-body p-4 text-center d-flex flex-column justify-content-center">
+                <h6 class="text-muted text-uppercase small fw-bold mb-3">Schulden Team 2</h6>
+                <div class="fs-2 fw-bold text-danger mb-3">{{ "%.2f"|format(player.balance_team2) }} €</div>
+                
+                {% if (split_t2_gen == split_t2_fine and split_t2_gen) or (not split_t2_gen and not split_t2_fine) %}
+                    {% if split_t2_gen %}
+                        <a href="{{ split_t2_gen }}/{{ '%.2f'|format(player.balance_team2 * -1) }}" target="_blank" class="paypal-btn shadow-sm mb-2 w-100 d-inline-block">
+                            <i class="bi bi-paypal"></i> Gesamt bezahlen ({{ "%.2f"|format(player.balance_team2 * -1) }} €)
+                        </a>
+                    {% else %}
+                        <button type="button" class="paypal-btn shadow-sm mb-2 w-100" onclick="alert('Bitte am Spieltag / bei der Versammlung bar bezahlen.');" style="background: #28a745;">
+                            <i class="bi bi-cash-coin"></i> Bar bezahlen ({{ "%.2f"|format(player.balance_team2 * -1) }} €)
+                        </button>
+                    {% endif %}
+                {% else %}
+                    <div class="d-flex flex-column gap-2 mb-2">
+                    {% if player.general_balance_team2 < 0 %}
+                        {% if split_t2_gen %}
+                            <a href="{{ split_t2_gen }}/{{ '%.2f'|format(player.general_balance_team2 * -1) }}" target="_blank" class="paypal-btn shadow-sm w-100 d-inline-block" style="font-size: 0.9rem;">
+                                <i class="bi bi-paypal"></i> Trikot ({{ "%.2f"|format(player.general_balance_team2 * -1) }} €)
+                            </a>
+                        {% else %}
+                            <button type="button" class="paypal-btn shadow-sm w-100" onclick="alert('Bitte das Trikotgeld bar bezahlen.');" style="background: #28a745; font-size: 0.9rem;">
+                                <i class="bi bi-cash-coin"></i> Trikot ({{ "%.2f"|format(player.general_balance_team2 * -1) }} €)
+                            </button>
+                        {% endif %}
+                    {% endif %}
+                    
+                    {% if player.fine_balance_team2 < 0 %}
+                        {% if split_t2_fine %}
+                            <a href="{{ split_t2_fine }}/{{ '%.2f'|format(player.fine_balance_team2 * -1) }}" target="_blank" class="paypal-btn shadow-sm w-100 d-inline-block" style="font-size: 0.9rem;">
+                                <i class="bi bi-paypal"></i> Strafe ({{ "%.2f"|format(player.fine_balance_team2 * -1) }} €)
+                            </a>
+                        {% else %}
+                            <button type="button" class="paypal-btn shadow-sm w-100" onclick="alert('Bitte die Strafen bar bezahlen.');" style="background: #28a745; font-size: 0.9rem;">
+                                <i class="bi bi-cash-coin"></i> Strafe ({{ "%.2f"|format(player.fine_balance_team2 * -1) }} €)
+                            </button>
+                        {% endif %}
+                    {% endif %}
+                    </div>
+                {% endif %}
+                
+                {% set mail_t2_gen = settings.get('paypal_email_team2_general', '') %}
+                {% set mail_t2_fine = settings.get('paypal_email_team2_fine', '') %}
+                {% if mail_t2_gen or mail_t2_fine %}
+                <div class="mt-2 text-muted user-select-all" style="font-size: 0.75rem;">
+                    {% if (mail_t2_gen == mail_t2_fine and mail_t2_gen) or (not mail_t2_fine and split_t2_gen == split_t2_fine) or (not mail_t2_gen and split_t2_gen == split_t2_fine)  %}
+                        {% set single_mail_2 = mail_t2_gen if mail_t2_gen else mail_t2_fine %}
+                        <small class="d-block">{{ single_mail_2 }}</small>
+                    {% else %}
+                        {% if mail_t2_gen and player.general_balance_team2 < 0 %}<small class="d-block">Trikot/Sonstiges: {{ mail_t2_gen }}</small>{% endif %}
+                        {% if mail_t2_fine and player.fine_balance_team2 < 0 %}<small class="d-block">Strafen: {{ mail_t2_fine }}</small>{% endif %}
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+
+<!-- 4. PUSH SETTINGS CARD -->
+{% if current_user.role != 'guest' %}
+<div id="push-notification-container" class="card border-0 shadow-sm rounded-4 mb-4">
+    <div class="card-body text-center p-3">
+        <h6 class="card-title fw-bold">📱 App-Einstellungen</h6>
+        <div id="push-notification-area" class="mt-2">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div> 
+            <span class="text-muted small ms-2">Lade Status...</span>
+        </div>
+        <!-- Unsubscribe Area injected here -->
+        <div id="unsubscribe-area" class="mt-2 text-center"></div>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- 5. PLAYER STATISTICS -->
+<h6 class="ms-1 mb-2 text-muted fw-bold small text-uppercase">Spieler-Statistik {{ selected_season }}</h6>
+<div class="row g-2 mb-4">
+    <!-- Gesamt -->
+    <div class="col-4">
+        <div class="stat-card-mini">
+            <div class="stat-label">Spiele</div>
+            <div class="stat-value text-dark">{{ player_stats.num_games }}</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="stat-card-mini">
+            <div class="stat-label">Strafen</div>
+            <div class="stat-value text-danger">{{ "%.0f"|format(player_stats.total_fines) }}€</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="stat-card-mini">
+            <div class="stat-label">Gezahlt</div>
+            <div class="stat-value text-success">{{ "%.0f"|format(player_stats.total_payments) }}€</div>
+        </div>
+    </div>
+    
+    <!-- Team Split -->
+    <div class="col-6">
+        <div class="p-2 border rounded-3 bg-white text-center shadow-sm">
+            <div class="stat-label">Team 1 Bilanz</div>
+             <div class="small">
+                 <span class="text-danger fw-bold">-{{ "%.0f"|format(stats_t1.total_fines) }}</span> / 
+                 <span class="text-success fw-bold">+{{ "%.0f"|format(stats_t1.total_payments) }}</span>
+             </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="p-2 border rounded-3 bg-white text-center shadow-sm">
+             <div class="stat-label">Team 2 Bilanz</div>
+             <div class="small">
+                 <span class="text-danger fw-bold">-{{ "%.0f"|format(stats_t2.total_fines) }}</span> / 
+                 <span class="text-success fw-bold">+{{ "%.0f"|format(stats_t2.total_payments) }}</span>
+             </div>
+        </div>
+    </div>
+</div>
+
+<!-- 6. SEASON SELECTOR -->
+<div class="d-flex justify-content-between align-items-center mb-2 px-1">
+    <h6 class="mb-0 text-muted fw-bold small text-uppercase"> Verlauf</h6>
+    <div class="dropdown">
+        <button class="view-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            Saison {{ selected_season }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end border-0 shadow rounded-4">
+            {% for season in available_seasons %}
+            <li><a class="dropdown-item {% if season == selected_season %}active{% endif %}" href="{{ url_for('player_detail', player_id=player.id, season=season) }}">{{ season }}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<!-- 7. TRANSACTION LIST (New Design) -->
+<div class="tx-card mb-5">
+    {% for tx in all_transactions %}
+    <div class="tx-item">
+        <div class="d-flex flex-column" style="max-width: 65%;">
+            <span class="tx-desc text-truncate">
+                {{ tx.desc }}
+                {% if tx.is_fine_unpaid %} <span class="badge bg-danger rounded-pill ms-1" style="font-size:0.5em; vertical-align: text-top;">OFFEN</span> {% endif %}
+                {% if tx.did_not_play %} <span class="badge bg-secondary ms-1 p-1 text-wrap" style="font-size:0.6em; font-weight:normal; max-width: 100%;">Hat nicht gespielt oder hat bei der anderen Mannschaft gespielt</span> {% endif %}
+            </span>
+            <span class="tx-date">
+                {{ tx.date.strftime('%d.%m.%y') }}
+                {% if tx.is_fine_unpaid and tx.deadline %} · <span class="text-danger">Bis {{ tx.deadline.strftime('%d.%m.') }}</span>{% endif %}
+            </span>
+        </div>
+        
+        <div class="text-end">
+             <div class="tx-amount {% if tx.is_carry_over %}text-muted{% elif tx.type == 'money' and tx.amount_raw < 0 %}text-danger{% elif tx.type == 'money' and tx.amount_raw > 0 %}text-success{% else %}transaction-kistl{% endif %}">
+                {{ tx.val }}
+            </div>
+            {% if tx.type == 'money' and tx.running_balance %}
+            <div class="text-muted small" style="font-size: 0.7rem;">
+                {{ tx.running_balance }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+        <i class="bi bi-clock-history fs-1 opacity-25 mb-2 d-block"></i>
+        Keine Einträge für {{ selected_season }}
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/push-manager.js') }}?v={{ now.timestamp() }}"></script> 
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Die ID des aktuell angezeigten Spielers wird an das Skript übergeben
+    const viewedPlayerId = {{ player.id|tojson }};
+    // Nur Initialisieren, wenn kein Gast (Gäste dürfen sich nicht als Spieler registrieren)
+    const isGuest = {{ 'true' if current_user.role == 'guest' else 'false' }};
+
+        if(viewedPlayerId && !isGuest) {
+             console.log("Loading Push Manager for confirmed Player ID:", viewedPlayerId);
+             initializePushNotifications(viewedPlayerId);
+        } else {
+             console.log("Push Manager skipped (Guest or no ID).");
+        }
+    });
+</script>
+{% endblock %}

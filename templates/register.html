@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <h3 class="card-title text-center mb-4">Registrierung</h3>
+        <p class="text-muted small text-center mb-4">
+            Bitte geben Sie Ihren Namen exakt so ein, wie er in der Datenbank hinterlegt ist (z.B. "Max Mustermann").
+        </p>
+        
+        <form method="POST" action="{{ url_for('register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <!-- Hidden Token Field -->
+          {% if token %}
+          <input type="hidden" name="token" value="{{ token }}">
+          {% endif %}
+          
+          <div class="mb-3">
+            <label for="username" class="form-label">Vorname Nachname</label>
+            <input type="text" class="form-control" id="username" name="username" placeholder="Vorname Nachname" autocomplete="username" value="{{ prefill_username if prefill_username else '' }}" required {% if prefill_username %}readonly{% endif %}>
+             {% if prefill_username %}
+             <div class="form-text text-success">Dein Name wurde automatisch erkannt.</div>
+             {% endif %}
+          </div>
+          <div class="mb-3">
+            <label for="password" class="form-label">Passwort festlegen</label>
+            <input type="password" class="form-control" id="password" name="password" autocomplete="new-password" required>
+          </div>
+          <div class="mb-3">
+            <label for="password_confirm" class="form-label">Passwort bestätigen</label>
+            <input type="password" class="form-control" id="password_confirm" name="password_confirm" autocomplete="new-password" required>
+          </div>
+          
+          <div class="d-grid">
+            <button type="submit" class="btn btn-success">{% if prefill_username %}Account aktivieren{% else %}Konto erstellen{% endif %}</button>
+          </div>
+        </form>
+        
+        <div class="text-center mt-3">
+            <a href="{{ url_for('login') }}">Bereits registriert? Hier anmelden.</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

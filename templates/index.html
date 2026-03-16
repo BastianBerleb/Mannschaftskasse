@@ -1,0 +1,901 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Magic Link / Auto-Login Detection Hook -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div id="flash-hook" data-has-magic-login="{% if 'automatisch angemeldet' in messages[0][1] or 'erfolgreich per Link' in messages[0][1] %}true{% else %}false{% endif %}"></div>
+  {% endif %}
+{% endwith %}
+
+<style>
+    /* Modern Card Design uses premium.css variables */
+    :root {
+        --card-bg: #ffffff;
+        --card-shadow: var(--shadow-sm); 
+        --card-hover-shadow: var(--shadow-hover);
+        --primary-color: var(--bs-primary);
+        --success-color: var(--bs-success);
+        --danger-color: var(--bs-danger);
+        --bg-color: var(--app-bg);
+        --text-main: #212529;
+        --text-muted: #6c757d;
+        --avatar-bg: #e9ecef;
+        --avatar-text: #495057;
+        --border-color: #dee2e6;
+    }
+
+    html[data-theme="dark"] {
+        --card-bg: var(--bs-secondary-bg);
+        --bg-color: var(--app-bg);
+        --text-main: #f1f5f9;
+        --text-muted: #94a3b8;
+        --avatar-bg: #334155;
+        --avatar-text: #cbd5e1;
+        --border-color: rgba(255,255,255,0.1);
+    }
+
+    body {
+        background-color: var(--bg-color);
+    }
+
+    .player-card {
+        background: var(--card-bg);
+        border: none;
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        color: inherit;
+    }
+
+    .player-card:active {
+        transform: scale(0.97);
+    }
+
+    .player-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-hover);
+        text-decoration: none;
+    }
+
+    /* Das a-Tag sollte alles umschließen */
+    .player-link-wrapper {
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        height: 100%;
+        width: 100%;
+    }
+    .player-link-wrapper:hover {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .card-content {
+        padding: 1.25rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+    }
+
+    /* Left side: Avatar + Name */
+    .player-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex: 1;
+        min-width: 0; /* Text truncation fix */
+    }
+
+    .avatar-circle {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: var(--avatar-bg);
+        color: var(--avatar-text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.25rem;
+        flex-shrink: 0;
+        border: 2px solid var(--card-bg);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    
+    .avatar-circle.is-positive { background-color: #d1e7dd; color: #0f5132; }
+    .avatar-circle.is-negative { background-color: #f8d7da; color: #842029; }
+    .avatar-circle.is-neutral { background-color: #e2e3e5; color: #41464b; }
+
+    .player-details {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .player-name {
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-main);
+        line-height: 1.2;
+    }
+
+    .badge-row {
+        display: flex;
+        gap: 0.35rem;
+        margin-top: 0.35rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    
+    .badge-mini {
+        font-size: 0.65rem;
+        padding: 0.25em 0.6em;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-radius: 6px;
+    }
+
+    /* Right side: Balances */
+    .balance-container {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.4rem;
+        margin-left: 0.8rem;
+    }
+
+    .balance-details-card {
+        background-color: var(--card-bg);
+        border: 1px solid rgba(128,128,128,0.15);
+        border-radius: 8px;
+        padding: 6px 10px;
+        min-width: 125px;
+        font-size: 0.85rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    
+    .bb-light {
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .row-sub {
+        font-size: 0.72rem;
+        line-height: 1.2;
+    }
+
+    .balance-pill {
+        font-weight: 700;
+        padding: 0.35rem 0.85rem;
+        border-radius: 50rem; /* Pill shape */
+        font-size: 0.95rem;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 85px;
+        justify-content: flex-end;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .balance-pill.positive { background-color: #d1e7dd; color: #0f5132; }
+    .balance-pill.negative { background-color: #f8d7da; color: #842029; }
+    .balance-pill.neutral { background-color: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; }
+    
+    .team-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        opacity: 0.7;
+        font-weight: 600;
+    }
+    
+    .kistl-badge {
+        background-color: #fff3cd;
+        color: #856404;
+        font-size: 0.85rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    /* Current User Highlight */
+    .player-card.is-me {
+        background: var(--card-bg);
+        border: 2px solid var(--primary-color);
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+    }
+    
+    /* Search Bar Design */
+    .search-toggle-btn {
+        background: var(--card-bg);
+        border-radius: 16px;
+        padding: 1rem 1.25rem;
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: inherit;
+        font-weight: 600;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        transition: all 0.2s;
+    }
+    .search-toggle-btn:active { transform: scale(0.99); }
+    
+    /* Filter Dropdown Styling */
+    .filter-container {
+        background: var(--card-bg);
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        border: none;
+    }
+
+</style>
+
+<!-- NEU: Geburtstags-Anzeige (Mit Bildern) -->
+{% if birthday_players %}
+<div class="alert alert-warning text-center shadow-sm border-0 rounded-4 mb-4" role="alert" style="background: linear-gradient(135deg, #fff3cd, #ffe69c);">
+  <h4 class="alert-heading mb-3 h5">🎂 Happy Birthday! 🎉</h4>
+  <div class="d-flex justify-content-center gap-3 mb-2 flex-wrap">
+      {% for p in birthday_players %}
+        <div class="d-flex flex-column align-items-center">
+             <div class="mb-1 position-relative" style="width: 50px; height: 50px;">
+                {% if p.image_path %}
+                    <img src="{{ url_for('static', filename=p.image_path.replace('static/', '')) }}" class="rounded-circle w-100 h-100 object-fit-cover shadow border border-2 border-white" alt="{{ p.name }}">
+                {% else %}
+                    <div class="rounded-circle w-100 h-100 bg-white d-flex align-items-center justify-content-center shadow border border-2 border-white text-dark fw-bold" style="font-size: 0.9rem;">
+                        {{ p.name[:2].upper() }}
+                    </div>
+                {% endif %}
+             </div>
+             <small class="fw-bold text-dark" style="font-size: 0.8rem;">{{ p.name }}</small>
+        </div>
+      {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-between align-items-center mb-4 px-1 mt-2">
+    <div>
+        <h1 class="h3 fw-bolder mb-0 text-main">Spielerübersicht</h1>
+        <small class="text-muted fw-semibold">Saison {{ selected_season }}</small>
+    </div>
+    
+    {% if current_user.role == 'player' %}
+    <!-- Minimaler Saison-Wähler (Button-Style) -->
+    <div class="dropdown">
+        <button class="btn btn-white shadow-sm rounded-pill px-3 py-2 fw-bold small dropdown-toggle text-main" type="button" data-bs-toggle="dropdown" style="background: var(--card-bg); border-color: var(--border-color);">
+            Build {{ selected_season }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-4">
+            {% for season in available_seasons %}
+            <li><a class="dropdown-item {% if season == selected_season %}active{% endif %}" href="{{ url_for('index', season=season) }}">{{ season }}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+
+{% if current_user.role != 'player' %}
+<!-- Modern Collapsible Filter -->
+<div class="mb-4">
+    <button class="search-toggle-btn d-lg-none" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+        <span class="d-flex align-items-center"><i class="bi bi-funnel me-2 text-primary"></i>Suchen & Filtern</span>
+        <i class="bi bi-chevron-down text-muted small"></i>
+    </button>
+    
+    <div class="collapse d-lg-block mt-3 mt-lg-0" id="filterCollapse">
+        <div class="rounded-4 p-3 p-lg-4 shadow-sm border-0" style="background: var(--card-bg);">
+            <form method="GET" action="{{ url_for('index') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label small fw-bold text-muted text-uppercase mb-1">Suche</label>
+                        <div class="input-group bg-light rounded-pill overflow-hidden border">
+                            <span class="input-group-text bg-transparent border-0 ps-3"><i class="bi bi-search text-muted"></i></span>
+                            <input type="search" name="query" class="form-control bg-transparent border-0 shadow-none ps-2" placeholder="Spieler suchen..." value="{{ search_query }}">
+                        </div>
+                    </div>
+                    
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label small fw-bold text-muted text-uppercase mb-1">Saison</label>
+                         <select name="season" class="form-select border shadow-sm rounded-pill ps-3" onchange="this.form.submit()">
+                            {% for season in available_seasons %}
+                            <option value="{{ season }}" {% if season == selected_season %}selected{% endif %}>{{ season }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-6 col-lg-2 pb-2">
+                        <div class="form-check form-switch ms-1">
+                            <input class="form-check-input" type="checkbox" name="show_debtors" id="showDebtorsCheck" {% if debtors_only %}checked{% endif %} onchange="this.form.submit()">
+                            <label class="form-check-label small fw-bold mt-1 ms-1 text-main" for="showDebtorsCheck">Nur Schuldner</label>
+                        </div>
+                    </div>
+                    
+                    <div class="col-12 col-lg-2 d-lg-none mt-4">
+                        <button class="btn btn-primary rounded-pill w-100 py-2 fw-bold shadow-sm" type="submit">Filter anwenden</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- App Push Info (bleibt erhalten aber versteckt) -->
+<div id="push-info" class="alert alert-info d-none rounded-4 shadow-sm border-0" role="alert">
+    ... <!-- content filled via JS -->
+</div>
+
+
+<!-- Player Grid -->
+<div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4" id="playerList">
+  {% for data in players_with_stats %}
+    {% set p = data.player %}
+    {% set is_negative = p.balance_team1 < 0 or p.balance_team2 < 0 %}
+    {% set is_positive = p.balance_team1 > 0 and p.balance_team2 > 0 %}
+    {% set initials = p.name[:1] + (p.name.split(' ')[-1][:1] if ' ' in p.name else '') %}
+    
+    <div class="col player-item-wrapper" 
+         data-player-id="{{ p.id }}" 
+         data-has-push="{{ data.has_push_notifications|lower }}">
+         
+         <div class="player-card">
+            <a href="{{ url_for('player_detail', player_id=p.id) }}" class="player-link-wrapper">
+                <div class="card-content">
+                    
+                    <!-- Left: Avatar & Info -->
+                    <div class="player-info">
+                        {% if p.image_path %}
+                            <div class="avatar-circle" style="background: none; border: none;">
+                                <img src="{{ url_for('static', filename=p.image_path.replace('static/', '')) }}" class="w-100 h-100 rounded-circle object-fit-cover shadow-sm border border-2 border-white" alt="{{ p.name }}" loading="lazy">
+                            </div>
+                        {% else %}
+                            <div class="avatar-circle {% if is_negative %}is-negative{% elif is_positive %}is-positive{% else %}is-neutral{% endif %}">
+                                {{ initials }}
+                            </div>
+                        {% endif %}
+                        
+                        <div class="player-details">
+                            <h5 class="player-name fs-5 fw-bolder text-main">
+                                {{ p.name }}
+                                <span class="current-user-icon ms-1 text-warning" style="display: none;"><i class="bi bi-star-fill"></i></span>
+                            </h5>
+                            
+                            <div class="badge-row">
+                                <!-- Badges -->
+                                <span class="badge bg-primary bg-opacity-10 text-primary badge-mini push-badge border border-primary border-opacity-10" style="display: none;">📱 App</span>
+                                
+                                {% if data.carryover_balance != 0 or data.carryover_kistl != 0 %}
+                                <span class="badge bg-info bg-opacity-10 text-info badge-mini border border-info border-opacity-10">↪ Übertrag</span>
+                                {% endif %}
+                                
+                                {% set oldest = p.oldest_unpaid_fine %}
+                                {% if oldest %}
+                                    {% set deadline = get_deadline(oldest.date) %}
+                                    {% set days = (deadline - now.date()).days %}
+                                    {% if days < 3 %}
+                                    <span class="badge badge-mini {% if days < 0 %}bg-danger text-white{% else %}bg-warning text-dark{% endif %}">
+                                        ⚠️ {{ deadline.strftime('%d.%m.') }}
+                                    </span>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right: Balances -->
+                    <div class="balance-container">
+                        <!-- Kistl (Only if < 0) -->
+                        {% if p.kistl_balance < 0 %}
+                        <div class="kistl-badge shadow-sm">
+                            <span>🍺</span> {{ p.kistl_balance * -1 }}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Money Balance Team 1 -->
+                        {% if p.balance_team1 != 0 or p.general_balance_team1 != 0 or p.fine_balance_team1 != 0 %}
+                        <div class="balance-details-card">
+                            <div class="d-flex justify-content-between align-items-center mb-1 {% if p.balance_team1 < 0 %}bb-light pb-1{% endif %}">
+                                <span class="team-label">T1 Ges.</span>
+                                <strong class="{% if p.balance_team1 >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(p.balance_team1) }} €</strong>
+                            </div>
+                            {% if p.balance_team1 < 0 %}
+                            <div class="d-flex justify-content-between text-muted row-sub">
+                                <span>👕 Trikot:</span>
+                                <span class="{% if p.general_balance_team1 < 0 %}text-danger{% endif %}">{{ "%.2f"|format(p.general_balance_team1) }} €</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted row-sub mt-1">
+                                <span>⚠️ Strafe:</span>
+                                <span class="{% if p.fine_balance_team1 < 0 %}text-danger{% endif %}">{{ "%.2f"|format(p.fine_balance_team1) }} €</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Money Balance Team 2 -->
+                        {% if p.balance_team2 != 0 or p.general_balance_team2 != 0 or p.fine_balance_team2 != 0 %}
+                        <div class="balance-details-card mt-1">
+                            <div class="d-flex justify-content-between align-items-center mb-1 {% if p.balance_team2 < 0 %}bb-light pb-1{% endif %}">
+                                <span class="team-label">T2 Ges.</span>
+                                <strong class="{% if p.balance_team2 >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(p.balance_team2) }} €</strong>
+                            </div>
+                            {% if p.balance_team2 < 0 %}
+                            <div class="d-flex justify-content-between text-muted row-sub">
+                                <span>👕 Trikot:</span>
+                                <span class="{% if p.general_balance_team2 < 0 %}text-danger{% endif %}">{{ "%.2f"|format(p.general_balance_team2) }} €</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted row-sub mt-1">
+                                <span>⚠️ Strafe:</span>
+                                <span class="{% if p.fine_balance_team2 < 0 %}text-danger{% endif %}">{{ "%.2f"|format(p.fine_balance_team2) }} €</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        {% if p.balance_team1 == 0 and p.balance_team2 == 0 and p.general_balance_team1 == 0 and p.fine_balance_team1 == 0 and p.general_balance_team2 == 0 and p.fine_balance_team2 == 0 %}
+                        <div class="balance-pill neutral">
+                            <i class="bi bi-check-lg small"></i> 0.00
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+  {% else %}
+    <div class="col-12">
+        <div class="alert alert-light text-center py-5 rounded-4 shadow-sm">
+            <div class="fs-1 text-muted mb-3 opacity-50">🔍</div>
+            <h6 class="text-muted">Keine Spieler gefunden</h6>
+            <p class="small text-muted mb-0 opacity-75">Versuche andere Filtereinstellungen</p>
+        </div>
+    </div>
+  {% endfor %}
+</div>
+
+<script>
+// (Javascript updated for new classes)
+document.addEventListener('DOMContentLoaded', function() {
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                  window.navigator.standalone === true;
+
+    const pushInfo = document.getElementById('push-info');
+    if (!isPWA && pushInfo) {
+        const ua = navigator.userAgent || '';
+        let instruction = '';
+        if (/Android/i.test(ua)) instruction = 'Android: ⋮ → "Zum Startbildschirm"';
+        else if (/iPhone/i.test(ua)) instruction = 'iOS: Teilen → "Zum Home-Bildschirm"';
+        else instruction = 'Browser-Menü → App installieren';
+
+        pushInfo.innerHTML = `
+            <div class="d-flex align-items-center p-2">
+                <span class="fs-1 me-3">📱</span>
+                <div>
+                    <h6 class="mb-1 fw-bold">App installieren</h6>
+                    <p class="mb-0 small text-muted lh-sm">${instruction}</p>
+                    <p class="mb-0 small text-primary mt-1" onclick="alert('Nach Installation auf Namen tippen!')" style="cursor:pointer"><u>Danach hier tippen für Setup</u></p>
+                </div>
+            </div>
+        `;
+        pushInfo.classList.remove('d-none');
+    }
+
+    identifyAndSortPlayers();
+    
+    const filterCollapse = document.getElementById('filterCollapse');
+    const chevronIcon = document.querySelector('.search-toggle-btn .bi-chevron-down');
+    
+    if (filterCollapse && chevronIcon) {
+        filterCollapse.addEventListener('show.bs.collapse', () => {
+            chevronIcon.classList.replace('bi-chevron-down', 'bi-chevron-up');
+        });
+        filterCollapse.addEventListener('hide.bs.collapse', () => {
+            chevronIcon.classList.replace('bi-chevron-up', 'bi-chevron-down');
+        });
+    }
+});
+
+function showPushUsers() {}
+
+async function identifyAndSortPlayers(retries = 2) {
+    // Optimierung: Erst aus Cache laden für sofortige UI-Anzeige
+    const cachedPlayerId = sessionStorage.getItem('current_player_id');
+    if (cachedPlayerId) {
+        markCurrentUser(parseInt(cachedPlayerId));
+        sortPlayerList(parseInt(cachedPlayerId));
+        // Trotzdem im Hintergrund verifizieren (ohne Retry-Loop)
+        verifyCurrentPlayer();
+        return;
+    }
+    
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+            let registration = await navigator.serviceWorker.getRegistration();
+            if (!registration || !registration.active) {
+                 if (retries > 0) return setTimeout(() => identifyAndSortPlayers(retries - 1), 300);
+                 registration = await navigator.serviceWorker.ready;
+            }
+            
+            const subscription = await registration.pushManager.getSubscription();
+            
+            if (subscription) {
+                const pushInfo = document.getElementById('push-info');
+                if (pushInfo) pushInfo.style.display = 'none';
+                
+                // Timeout für schnellere Reaktion
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                try {
+                    const response = await fetch('/api/check-current-user', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({endpoint: subscription.endpoint}),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    const result = await response.json();
+                    
+                    if (result.is_current_user) {
+                        // Cache speichern für schnelleren Start beim nächsten Mal
+                        sessionStorage.setItem('current_player_id', result.player_id);
+                        markCurrentUser(result.player_id);
+                        sortPlayerList(result.player_id);
+                    }
+                } catch(fetchErr) {
+                    // Timeout oder Netzwerkfehler - kein Retry, einfach überspringen
+                }
+            }
+        } catch (error) {
+            // Stille Fehlerbehandlung
+        }
+    }
+}
+
+// Hintergrund-Verifizierung ohne UI-Blockierung
+async function verifyCurrentPlayer() {
+    try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) return;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+            sessionStorage.removeItem('current_player_id');
+            return;
+        }
+        
+        const response = await fetch('/api/check-current-user', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({endpoint: subscription.endpoint})
+        });
+        const result = await response.json();
+        
+        if (!result.is_current_user) {
+            sessionStorage.removeItem('current_player_id');
+            location.reload(); // UI korrigieren
+        }
+    } catch(e) { /* Stille Fehlerbehandlung */ }
+}
+
+function markCurrentUser(playerId) {
+    const wrapper = document.querySelector(`[data-player-id="${playerId}"]`);
+    if (wrapper) {
+        const card = wrapper.querySelector('.player-card');
+        if(card) {
+            card.classList.add('is-me');
+            
+            // Scroll into view gently if needed
+            // card.scrollIntoView({behavior: "smooth", block: "center"});
+        }
+        
+        const icon = wrapper.querySelector('.current-user-icon');
+        if (icon) icon.style.display = 'inline-block';
+        
+        const nameEl = wrapper.querySelector('.player-name');
+        if (nameEl && !nameEl.innerHTML.includes('(Du)')) {
+            nameEl.innerHTML += ' <span class="text-primary small ms-1">(Du)</span>';
+        }
+    }
+}
+
+    function sortPlayerList(currentUserId) {
+    const list = document.getElementById('playerList');
+    const item = document.querySelector(`[data-player-id="${currentUserId}"]`);
+    
+    if (item) {
+        list.insertBefore(item, list.firstChild);
+    }
+}
+
+// --- WebAuthn Registration & Management Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    const regBtnMain = document.getElementById('webauthn-register-btn');
+    const modalEl = document.getElementById('webauthnModal');
+    const listContainer = document.getElementById('webauthn-list-container');
+    const regBtnModal = document.getElementById('webauthn-register-btn-modal');
+    
+    // Clear sessionStorage if requested by server (after logout)
+    if (document.cookie.includes('clear_session_storage=1')) {
+        sessionStorage.clear();
+        document.cookie = "clear_session_storage=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    }
+
+    if (!window.PublicKeyCredential) return;
+    
+    // Show main button only if user has no credentials yet
+    const hasCredentials = {% if user_has_biometrics %}true{% else %}false{% endif %};
+    if (regBtnMain && !hasCredentials) regBtnMain.style.setProperty('display', 'flex', 'important');
+    
+    const webauthnModal = new bootstrap.Modal(modalEl);
+    
+    // Open modal instead of direct registration
+    if (regBtnMain) {
+        regBtnMain.addEventListener('click', () => {
+            loadCredentials();
+            webauthnModal.show();
+        });
+    }
+
+    // Auto-Prompt if no credentials and WebAuthn supported
+    const urlParams = new URLSearchParams(window.location.search);
+    const isLogin = urlParams.get('login') === '1';
+
+
+    // Clean ?login=1 from URL after reading it (prevents re-trigger on refresh)
+    if (isLogin) {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+    }
+
+    if (!hasCredentials) {
+        setTimeout(() => {
+            const alreadyDismissed = sessionStorage.getItem('biometric_prompt_dismissed');
+            if (isLogin || !alreadyDismissed) {
+                webauthnModal.show();
+                sessionStorage.setItem('biometric_prompt_dismissed', 'true');
+            }
+        }, 1500);
+    }
+    
+    regBtnModal.addEventListener('click', startRegistration);
+
+    // --- Toast Helper ---
+    function showToast(message, type = 'success') {
+        const toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) return;
+        const bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+        const icon = type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+        const id = 'toast-' + Date.now();
+        const html = `
+            <div id="${id}" class="toast align-items-center text-white ${bgClass} border-0 shadow-lg mb-2 rounded-3" role="alert" aria-live="assertive">
+                <div class="d-flex">
+                    <div class="toast-body fw-bold">
+                        <i class="bi ${icon} me-2 fs-5 align-middle"></i>
+                        <span class="align-middle">${message}</span>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-3 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>`;
+        toastContainer.insertAdjacentHTML('beforeend', html);
+        new bootstrap.Toast(document.getElementById(id), { delay: 5000 }).show();
+    }
+    
+    async function loadCredentials() {
+        listContainer.innerHTML = '<div class="text-center py-3 text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Lade...</div>';
+        try {
+            const response = await fetch('/webauthn/credentials');
+            const creds = await response.json();
+            
+            if (creds.length === 0) {
+                listContainer.innerHTML = '<div class="alert alert-light border shadow-none rounded-4 text-center py-3 m-0">Keine Geräte registriert.</div>';
+                return;
+            }
+            
+            let html = '<div class="list-group list-group-flush rounded-4 border">';
+            creds.forEach(c => {
+                html += `
+                    <div class="list-group-item d-flex justify-content-between align-items-center py-3 px-3">
+                        <div>
+                            <div class="fw-bold small text-truncate" style="max-width: 150px;">Gerät ${c.id.substring(0, 8)}...</div>
+                            <small class="text-muted" style="font-size: 0.7rem;">Registriert am: ${c.created_at}</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger border-0 rounded-circle" onclick="deleteCredential('${c.id}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            listContainer.innerHTML = html;
+        } catch (err) {
+            listContainer.innerHTML = '<div class="alert alert-danger small">Fehler beim Laden der Geräte.</div>';
+        }
+    }
+    
+    window.deleteCredential = async (id) => {
+        if (!confirm("Dieses Gerät wirklich entfernen? Du kannst dich dann an diesem Gerät nicht mehr biometrisch anmelden.")) return;
+        try {
+            const response = await fetch(`/webauthn/credentials/${id}`, { 
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+            });
+            if (response.ok) {
+                // Check if we should re-show the registration button
+                const credsResponse = await fetch('/webauthn/credentials');
+                const creds = await credsResponse.json();
+                if (creds.length === 0) {
+                    const btnCol = document.getElementById('webauthn-btn-column');
+                    if (btnCol) btnCol.style.display = '';
+                    // Reset dismissal so they get prompted again later
+                    sessionStorage.removeItem('biometric_prompt_dismissed');
+                }
+                loadCredentials();
+                showToast('Gerät erfolgreich entfernt.');
+            } else {
+                showToast('Fehler beim Löschen.', 'error');
+            }
+        } catch (err) { showToast('Netzwerkfehler.', 'error'); }
+    };
+    
+    async function startRegistration() {
+        regBtnModal.disabled = true;
+        const originalText = regBtnModal.innerHTML;
+        regBtnModal.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Warten auf Gerät...';
+        
+        try {
+            const optionsResponse = await fetch('/webauthn/register/options', { 
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+            });
+            if (!optionsResponse.ok) throw new Error("Fehler beim Laden der Optionen");
+            const options = await optionsResponse.json();
+            
+            options.challenge = base64url_to_bytes(options.challenge);
+            options.user.id = base64url_to_bytes(options.user.id);
+            if (options.excludeCredentials) {
+                options.excludeCredentials = options.excludeCredentials.map(cred => ({
+                    ...cred, id: base64url_to_bytes(cred.id)
+                }));
+            }
+            
+            const credential = await navigator.credentials.create({ publicKey: options });
+            
+            const encodedId = bytes_to_base64url(new Uint8Array(credential.rawId));
+            const response = {
+                id: encodedId,
+                rawId: encodedId,
+                type: credential.type,
+                response: {
+                    attestationObject: bytes_to_base64url(new Uint8Array(credential.response.attestationObject)),
+                    clientDataJSON: bytes_to_base64url(new Uint8Array(credential.response.clientDataJSON)),
+                    transports: credential.response.getTransports ? credential.response.getTransports() : [],
+                },
+                clientExtensionResults: credential.getClientExtensionResults(),
+            };
+            
+            const verifyResponse = await fetch('/webauthn/register/verify', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(response)
+            });
+            
+            if (!verifyResponse.ok) {
+                const errorData = await verifyResponse.json();
+                throw new Error(errorData.error || "Server-Verifizierung fehlgeschlagen");
+            }
+            
+            showToast('✅ Gerät erfolgreich hinzugefügt! Ab jetzt kannst du dich biometrisch anmelden.');
+            const btnCol = document.getElementById('webauthn-btn-column');
+            if (btnCol) btnCol.style.display = 'none';
+            loadCredentials();
+        } catch (err) {
+            if (err.name === 'NotAllowedError') {
+                showToast('Registrierung abgebrochen.', 'error');
+            } else {
+                showToast('Registrierung fehlgeschlagen: ' + err.message, 'error');
+            }
+        } finally {
+            regBtnModal.disabled = false;
+            regBtnModal.innerHTML = originalText;
+        }
+    }
+});
+
+// Helper functions for base64url conversion
+function base64url_to_bytes(base64url) {
+    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = window.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function bytes_to_base64url(bytes) {
+    if (typeof bytes === 'string') return bytes;
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+</script>
+<script>
+    // --- MAGIC LOGIN / AUTO-LOGIN PUSH TRIGGER ---
+    document.addEventListener('DOMContentLoaded', function() {
+        const flashHook = document.getElementById('flash-hook');
+        // DISABLED Magic Login Auto-Trigger as per user request (User flow changed to Register -> Login)
+        // if (flashHook && flashHook.dataset.hasMagicLogin === 'true') {
+        if (false) { 
+            console.log("🪄 Magic Login detected! Triggering Push/Install Prompts...");
+            
+            // 1. Install Prompt (PWA) forcieren, falls möglich
+            if (typeof pwaManager !== 'undefined' && pwaManager) {
+                pwaManager.showInstallUI();
+            }
+            
+            // 2. Push Notification Prompt
+            // Wir suchen den Link zum eigenen Profil, um die ID zu bekommen
+            // (Hack: Der User ist ja eingeloggt, also ist er einer der Cards) 
+            // Besser: Wir leiten ihn direkt zum Profil um? Nein, er soll die Übersicht sehen.
+            // ABER: Push-Abo geht nur auf der Profil-Seite sauber mit "initializePushNotifications".
+            
+            // ALTERNATIVE: Wir zeigen einen Toast/Modal
+            const pushModal = new bootstrap.Modal(document.getElementById('magicLoginModal'));
+            pushModal.show();
+        }
+    });
+</script>
+
+<!-- WebAuthn Management Modal -->
+<div class="modal fade" id="webauthnModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4 shadow-lg border-0">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Gerätesicherheit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-muted small mb-4">Hier kannst du deine biometrischen Geräte (FaceID, Fingerabdruck) verwalten.</p>
+        
+        <div id="webauthn-list-container" class="mb-4">
+            <!-- List filled via JS -->
+            <div class="text-center py-3 text-muted small">Lade registrierte Geräte...</div>
+        </div>
+        
+        <div class="d-grid">
+            <button type="button" id="webauthn-register-btn-modal" class="btn btn-primary rounded-pill py-2 fw-bold">
+                <i class="bi bi-plus-circle me-2"></i> Neues Gerät registrieren
+            </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

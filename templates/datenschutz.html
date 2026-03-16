@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Datenschutz - Mannschaftskasse{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-md-9">
+            <h1 class="mb-4">Datenschutzerklärung</h1>
+
+            <p class="text-muted">Stand: 13. März 2026</p>
+
+            <h5 class="mt-4">1. Verantwortlicher</h5>
+            <p>Die Datenverarbeitung auf dieser Anwendung erfolgt durch den Betreiber:</p>
+            <p>
+                <strong>Bastian Berleb</strong><br>
+                Ludwig-Thoma-Straße 31<br>
+                93087 Alteglofsheim<br>
+                E-Mail: <a href="mailto:bastianberleb@gmail.com">bastianberleb@gmail.com</a>
+            </p>
+
+            <h5 class="mt-4">2. Allgemeines zur Datenverarbeitung</h5>
+            <p>Die Nutzung dieser Anwendung ist für geladene Mitglieder (Spieler, Trainer, Funktionäre) des TSV Alteglofsheim bestimmt. Wir verarbeiten personenbezogene Daten nur im Rahmen der Bestimmungen der Datenschutz-Grundverordnung (DSGVO) und des Bundesdatenschutzgesetzes (BDSG).</p>
+
+            <h5 class="mt-4">3. Hosting und Content Delivery Network (CDN)</h5>
+            <p><strong>3.1 Eigener Server</strong><br>
+            Diese Anwendung wird auf einem privat betriebenen Server gehostet ("Self-Hosted"). Der Serverstandort ist Deutschland.</p>
+            
+            <p><strong>3.2 Cloudflare</strong><br>
+            Wir nutzen das Content Delivery Network (CDN) und Sicherheitsdienste von <strong>Cloudflare Germany GmbH</strong> (Rosental 7, c/o Mindspace, 80331 München, Deutschland; Mutterkonzern: Cloudflare, Inc., USA).</p>
+            <p>Der Datenverkehr zwischen deinem Endgerät und unserem Server wird technisch über das Netzwerk von Cloudflare geleitet (Reverse Proxy). Dies dient:</p>
+            <ul>
+                <li>Der Abwehr von Angriffen (z. B. DDoS-Attacken, Brute-Force-Angriffe).</li>
+                <li>Der sicheren Verschlüsselung der Verbindung (SSL/TLS).</li>
+                <li>Der Optimierung der Ladezeiten (Caching).</li>
+            </ul>
+            <p>Cloudflare verarbeitet hierbei Verkehrsdaten (z. B. IP-Adresse, Systemkonfigurationsdaten, Metadaten des Traffics). Die Verarbeitung erfolgt auf Grundlage unseres berechtigten Interesses an einer sicheren und funktionsfähigen Bereitstellung der Anwendung (Art. 6 Abs. 1 lit. f DSGVO). Cloudflare ist unter dem <strong>EU-U.S. Data Privacy Framework</strong> zertifiziert, was ein angemessenes Datenschutzniveau für Datenübermittlungen in die USA gewährleistet.</p>
+
+            <h5 class="mt-4">4. Welche Daten wir verarbeiten</h5>
+            <ul>
+                <li><strong>Bestandsdaten:</strong> Vorname, Nachname (zur Verwaltung der Spielerkonten).</li>
+                <li><strong>Zugangsdaten:</strong> Gehashtes Passwort (verschlüsselt, nicht im Klartext einsehbar).</li>
+                <li><strong>Kassendaten:</strong> Transaktionen, offene Posten (Strafen), Einzahlungen und Kontostände.</li>
+                <li><strong>Technische Protokolldaten:</strong> IP-Adresse, Browser-Typ, Zeitstempel (zur Fehleranalyse und Sicherheit).</li>
+                <li><strong>Systemprotokoll (Audit-Log):</strong> Alle sicherheitsrelevanten Aktionen von Administratoren und Nutzern (z. B. Logins, Passwortänderungen, Transaktionen, Änderungen an Mitgliedsdaten) werden detailliert (inkl. Benutzername und Zeitpunkt) protokolliert, um Missbrauch vorzubeugen und die Nachvollziehbarkeit sicherzustellen.</li>
+                <li><strong>Bilddaten:</strong> Fotos/Porträtaufnahmen der Spieler (siehe Punkt 5).</li>
+            </ul>
+
+            <h5 class="mt-4">5. Fotos und Bildrechte</h5>
+            <p>Innerhalb der Anwendung werden Porträtfotos (Spielerbilder) angezeigt.</p>
+            <p><strong>Zweck:</strong> Die Fotos dienen der visuellen Gestaltung der "Spielerkarten", der einfacheren Identifikation von Konten im internen Bereich und der Stärkung des Teamgefühls.</p>
+            <p><strong>Rechtsgrundlage:</strong> Die Verarbeitung erfolgt auf Basis unseres berechtigten Interesses (Art. 6 Abs. 1 lit. f DSGVO) an einer ansprechenden und funktionalen Gestaltung der internen Vereins-App bzw. auf Grundlage einer (mutmaßlichen) Einwilligung (Art. 6 Abs. 1 lit. a DSGVO) im Vereinskontext.</p>
+            <p><strong>Widerspruchsrecht:</strong> Du kannst der Verwendung deines Fotos jederzeit mit Wirkung für die Zukunft widersprechen. Wende dich hierzu einfach an den Verantwortlichen. Das Foto wird dann unverzüglich entfernt oder durch einen neutralen Platzhalter ersetzt.</p>
+
+            <h5 class="mt-4">6. Push-Benachrichtigungen</h5>
+            <p>Du hast die Möglichkeit, Push-Benachrichtigungen zu aktivieren, um über Neuigkeiten (z. B. neue Strafen) informiert zu werden. Hierfür verwenden wir den Web-Push-Standard.</p>
+            <p>Dabei wird deinem Browser ein eindeutiger Schlüssel (Push Subscription Endpoint) zugewiesen, den wir speichern, um Nachrichten an deinen Browser zu senden. Diese Daten werden ausschließlich für den Versand der Benachrichtigungen verwendet. Die Zustellung erfolgt über die Push-Server deines Browser-Anbieters (z. B. Google, Mozilla, Apple). Rechtsgrundlage ist deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du durch Aktivieren der Funktion erteilst und jederzeit durch Deaktivieren in den Browser-Einstellungen widerrufen kannst.</p>
+            
+            <h5 class="mt-4">7. Datensicherung (Backups)</h5>
+            <p>Zum Schutz vor Datenverlust erstellen wir regelmäßige, verschlüsselte Sicherungskopien der Datenbank. Diese werden auf Servern von <strong>Google Drive</strong> (Google Ireland Limited / Google LLC) gespeichert. Dies dient unserem berechtigten Interesse an der Verfügbarkeit und Wiederherstellbarkeit der Daten (Art. 6 Abs. 1 lit. f DSGVO).</p>
+
+            <h5 class="mt-4">8. Lokale Speicherung (Local Storage)</h5>
+            <p>Diese Anwendung verwendet zur Bereitstellung bestimmter Komfortfunktionen und zur fehlerfreien Darstellung den sogenannten <em>Local Storage</em> (lokaler Speicher) und <em>Session Storage</em> deines Webbrowsers. Dabei werden kleine Textinformationen (z. B. deine bevorzugte Ansicht für den Dark Mode oder der Zwischenspeicher für Push-Benachrichtigungen) direkt auf deinem Endgerät gespeichert.</p>
+            <p>Im Gegensatz zu vielen Cookies werden diese Daten <strong>nicht</strong> dazu verwendet, dein Nutzerverhalten über verschiedene Webseiten hinweg zu verfolgen (kein Tracking) und werden nicht an Dritte weitergegeben. Die Speicherung ist für die Funktionalität (z.B. Offline-Fähigkeit als <em>Progressive Web App</em>) technisch notwendig. Du kannst diese Daten jederzeit vollständig über die Einstellungen deines Webbrowsers löschen.</p>
+
+            <h5 class="mt-4">9. Externe Dienste und Bibliotheken</h5>
+            <p>Um die Ladezeit zu optimieren und bestimmte Funktionen (Diagramme) bereitzustellen, nutzen wir teilweise externe Content Delivery Networks (CDNs).</p>
+            <ul>
+                <li><strong>jsDelivr (Chart.js):</strong> Wir nutzen jsDelivr (Prospect One) zum Laden der Diagramm-Bibliothek "Chart.js". Hierbei wird deine IP-Adresse an den Anbieter übermittelt, um die Datei technisch auszuliefern.</li>
+            </ul>
+
+            <h5 class="mt-4">10. Deine Rechte</h5>
+            <p>Du hast jederzeit das Recht auf unentgeltliche <strong>Auskunft</strong> über deine gespeicherten personenbezogenen Daten, deren Herkunft und Empfänger und den Zweck der Datenverarbeitung sowie ein Recht auf <strong>Berichtigung</strong>, <strong>Sperrung</strong> oder <strong>Löschung</strong> dieser Daten. Hierzu sowie zu weiteren Fragen zum Thema personenbezogene Daten kannst du dich jederzeit unter der angegebenen Adresse an uns wenden.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

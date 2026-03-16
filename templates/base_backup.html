@@ -1,0 +1,1237 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    
+    <!-- PWA MANIFEST & THEME -->
+    <meta name="theme-color" content="#212529"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TSV Kasse II">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="msapplication-TileColor" content="#212529">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <link rel="manifest" href="{{ url_for('static', filename='app/manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}">
+    <link rel="apple-touch-startup-image" href="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}">
+    
+    <!-- SEO & Description -->
+    <meta name="description" content="Digitale Mannschaftskasse für TSV Alteglofsheim II - Spielerkonten, Strafen und Statistiken verwalten">
+    <meta name="keywords" content="TSV Alteglofsheim, Mannschaftskasse, Fußball, Vereinsverwaltung">
+    
+    <title>{% block title %}Mannschaftskasse TSV Alteglofsheim II{% endblock %}</title>
+    <!-- CSRF Token -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js für Statistik-Diagramme -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            /* Light Mode (default) */
+            --bs-body-bg: #ffffff;
+            --bs-body-color: #212529;
+            --navbar-bg: #212529;
+        }
+        
+        [data-bs-theme="dark"] {
+            /* Dark Mode */
+            --bs-body-bg: #1a1a1a;
+            --bs-body-color: #ffffff;
+            --navbar-bg: #000000;
+        }
+        
+        body {
+            background-color: var(--bs-body-bg);
+            color: var(--bs-body-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            padding-bottom: 60px;
+        }
+        
+        .navbar {
+            background-color: var(--navbar-bg) !important;
+        }
+        
+        .navbar-brand img {
+            height: 50px;
+            margin-right: 10px;
+        }
+        .balance-positive { color: green; font-weight: bold; }
+        .balance-negative { color: red; font-weight: bold; }
+        .transaction-positive { color: green; }
+        .transaction-negative { color: red; }
+        .transaction-kistl { color: #8B4513; }
+		.overflow-x-auto {
+            overflow-x: auto;
+            /* Versteckt die Scrollbar auf Webkit-Browsern (Chrome, Safari) */
+            &::-webkit-scrollbar {
+                display: none;
+            }
+            /* Versteckt die Scrollbar auf Firefox */
+            scrollbar-width: none;
+            /* Versteckt die Scrollbar auf IE/Edge */
+            -ms-overflow-style: none;
+        }
+        
+        /* App-Install Banner Styles */
+        .app-install-banner {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            border: none;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+            animation: slideInDown 0.5s ease-out;
+        }
+        
+        .app-install-banner .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        
+        @keyframes slideInDown {
+            from {
+                transform: translateY(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .app-install-button {
+            animation: pulse 2s infinite;
+        }
+        
+        .feature-highlight {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+        }
+
+        /* Mobile Install Overlay */
+        .mobile-install-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInOverlay 0.5s ease-out;
+        }
+        
+        .mobile-install-logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            animation: bounceIn 0.8s ease-out;
+        }
+        
+        @keyframes fadeInOverlay {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes fadeOutOverlay {
+            from {
+                opacity: 1;
+                transform: scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+        }
+        
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        /* Nur auf Mobile anzeigen */
+        @media (min-width: 769px) {
+            .mobile-install-overlay {
+                display: none !important;
+            }
+        }
+
+        /* PWA-spezifische Styles */
+        .pwa-mode .navbar {
+            padding-top: env(safe-area-inset-top);
+        }
+        
+        .pwa-mode {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+        
+        .pwa-exclusive {
+            display: none;
+        }
+        
+        .pwa-mode .pwa-exclusive {
+            display: block;
+        }
+        
+        .browser-only {
+            display: block;
+        }
+        
+        .pwa-mode .browser-only {
+            display: none;
+        }
+
+        /* Verbesserte Touch-Targets für PWA */
+        .pwa-mode .btn {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        .pwa-mode .list-group-item {
+            min-height: 48px;
+        }
+        
+        /* Dark Mode Styling für Spieler-Listen und Cards */
+        [data-bs-theme="dark"] .list-group-item {
+            background-color: #2d2d2d;
+            border-color: #404040;
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .list-group-item:hover {
+            background-color: #3d3d3d;
+        }
+        
+        [data-bs-theme="dark"] .card {
+            background-color: #2d2d2d;
+            border-color: #404040;
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .card-header {
+            background-color: #343434;
+            border-color: #404040;
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .table {
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .table th,
+        [data-bs-theme="dark"] .table td {
+            border-color: #404040;
+        }
+        
+        [data-bs-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+            background-color: #2a2a2a;
+        }
+        
+        [data-bs-theme="dark"] .form-control,
+        [data-bs-theme="dark"] .form-select {
+            background-color: #2d2d2d;
+            border-color: #404040;
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .form-control:focus,
+        [data-bs-theme="dark"] .form-select:focus {
+            background-color: #2d2d2d;
+            border-color: #0d6efd;
+            color: #ffffff;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+        
+        [data-bs-theme="dark"] .alert {
+            border-color: #404040;
+        }
+        
+        [data-bs-theme="dark"] .alert-info {
+            background-color: #1a2332;
+            border-color: #1e3a5f;
+            color: #b8daff;
+        }
+        
+        [data-bs-theme="dark"] .alert-success {
+            background-color: #1a2e1a;
+            border-color: #2d5a2d;
+            color: #b3d9b3;
+        }
+        
+        [data-bs-theme="dark"] .alert-warning {
+            background-color: #332a1a;
+            border-color: #5f4a1e;
+            color: #ffd280;
+        }
+        
+        [data-bs-theme="dark"] .alert-danger {
+            background-color: #321a1a;
+            border-color: #5f1e1e;
+            color: #ffb3b3;
+        }
+        
+        /* Links in Dark Mode */
+        [data-bs-theme="dark"] a {
+            color: #6ea8fe;
+        }
+        
+        [data-bs-theme="dark"] a:hover {
+            color: #9ec5fe;
+        }
+        
+        /* Badge Anpassungen */
+        [data-bs-theme="dark"] .badge.bg-light {
+            background-color: #404040 !important;
+            color: #ffffff;
+        }
+        
+        [data-bs-theme="dark"] .text-muted {
+            color: #adb5bd !important;
+        }
+        
+        /* Spielernamen-spezifische Anpassungen */
+        [data-bs-theme="dark"] .player-name {
+            color: #ffffff !important;
+        }
+        
+        [data-bs-theme="dark"] .list-group-item a {
+            color: #ffffff !important;
+        }
+        
+        [data-bs-theme="dark"] .list-group-item a:hover {
+            color: #f8f9fa !important;
+        }
+    </style>
+    
+    <!-- PWA Installation Manager -->
+    <script src="{{ url_for('static', filename='js/pwa-install.js') }}" defer></script>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('index') }}">
+          <img src="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}" alt="TSV Wappen">
+          TSV Kasse
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Spielerübersicht</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('kasse') }}">Mannschaftskasse</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('strafenkatalog') }}">Strafenkatalog</a></li>
+			<li class="nav-item"><a class="nav-link" href="{{ url_for('spieltag_log') }}">Spieltag-Log</a></li>
+            {% if current_user.is_authenticated %}
+			{% if current_user.role in ['admin', 'auditor'] %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('schulden') }}">Gruppenerinnerung</a></li>
+			{% endif %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('admin') }}">Admin</a></li>
+            {% endif %}
+          </ul>        
+          
+          <!-- Dark Mode Toggle -->
+          <button id="darkModeToggle" class="btn btn-outline-light me-3" title="Dark Mode umschalten" onclick="toggleDarkMode()">
+            <span id="darkModeIcon">🌙</span>
+          </button>
+          
+          <!-- PWA-Installation Button -->
+          <button id="pwa-install-button" class="btn btn-outline-light me-3" style="display: none;">
+            <span class="d-none d-md-inline">📱 App installieren</span>
+            <span class="d-md-none">📱</span>
+          </button>
+
+          <ul class="navbar-nav">
+            {% if current_user.is_authenticated %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('change_password') }}">Passwort ändern</a></li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('logout') }}" 
+                   onclick="return confirm('Möchten Sie sich wirklich abmelden?')">
+                  <span class="d-none d-md-inline">🚪 Logout</span>
+                  <span class="d-md-none">🚪</span>
+                </a>
+              </li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- App-Installation Banner (nur im Browser, nicht in der App) -->
+    <div id="app-install-banner" class="alert app-install-banner text-white mx-3 mb-3 d-none" role="alert">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center mb-2">
+            <h5 class="alert-heading mb-0 me-2">📱 TSV Kasse als App installieren!</h5>
+            <button type="button" class="btn-close" aria-label="Schließen" onclick="dismissInstallBanner()"></button>
+          </div>
+          <div class="row">
+            <div class="col-md-8">
+              <p class="mb-2">Holen Sie sich die beste Erfahrung mit der App-Version:</p>
+              <div class="row">
+                <div class="col-6">
+                  <div class="feature-highlight">⚡ Schneller Zugriff</div>
+                  <div class="feature-highlight">🏠 Auf Startbildschirm</div>
+                </div>
+                <div class="col-6">
+                  <div class="feature-highlight">📱 Offline verfügbar</div>
+                  <div class="feature-highlight">🔄 Automatische Updates</div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4 text-center">
+              <button id="install-app-btn" class="btn btn-light btn-lg app-install-button me-2">
+                <strong>📲 Jetzt installieren</strong>
+              </button>
+              <br><small class="text-white-50 mt-1">Kostenlos & ohne App Store</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile-optimierter Mini-Banner -->
+    <div id="app-install-mini-banner" class="alert alert-success mx-3 mb-3 d-none" role="alert">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>📱 Als App installieren</strong>
+          <small class="d-block">Für Startbildschirm & Offline-Nutzung</small>
+        </div>
+        <div>
+          <button id="install-app-mini-btn" class="btn btn-success btn-sm me-2">Installieren</button>
+          <button type="button" class="btn-close" aria-label="Schließen" onclick="dismissInstallBanner()"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vollbild Mobile App Install Banner -->
+    <div id="mobile-install-overlay" class="mobile-install-overlay d-none">
+      <div class="container text-center text-white p-4">
+        <div class="mb-4">
+          <img src="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}" alt="TSV Logo" class="mobile-install-logo">
+        </div>
+        
+        <h1 class="display-4 fw-bold mb-3">📱 Mannschaftskasse als App installieren</h1>
+        
+        <p class="lead mb-4">Nutzen Sie alle Vorteile der App-Version:</p>
+        
+        <div class="row text-start mb-4">
+          <div class="col-6">
+            <div class="feature-highlight mb-3">
+              <h5>📴 Offline-Modus</h5>
+              <small>Auch ohne Internet nutzbar</small>
+            </div>
+            <div class="feature-highlight mb-3">
+              <h5>🔔 Push-Benachrichtigungen</h5>
+              <small>Bleiben Sie informiert</small>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="feature-highlight mb-3">
+              <h5>🚀 Schneller Start</h5>
+              <small>Direkter Zugriff vom Homescreen</small>
+            </div>
+            <div class="feature-highlight mb-3">
+              <h5>📊 Bessere Performance</h5>
+              <small>Native App-Erfahrung</small>
+            </div>
+          </div>
+        </div>
+        
+        <div class="d-grid gap-3">
+          <button id="mobile-install-button" class="btn btn-light btn-lg">
+            <strong>📥 Jetzt als App installieren</strong>
+          </button>
+          
+          <button id="mobile-install-instructions" class="btn btn-outline-light btn-lg">
+            📖 Installationsanleitung anzeigen
+          </button>
+          
+          <button id="mobile-install-dismiss" class="btn btn-outline-light">
+            ❌ Später erinnern
+          </button>
+          
+          <button id="mobile-install-never" class="btn btn-link text-white-50">
+            <small>Nie wieder anzeigen</small>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    let deferredPrompt = null;
+    let newWorkerWaiting = null;
+    
+    // Alle Install-Buttons sammeln
+    const installButtons = [
+      document.getElementById('pwa-install-button'),
+      document.getElementById('install-app-mini-btn'), 
+      document.getElementById('mobile-install-button')
+    ].filter(btn => btn !== null);
+    
+    const mobileOverlay = document.getElementById('mobile-install-overlay');
+    const miniInstallBanner = document.getElementById('app-install-mini-banner');
+
+    console.log('🔧 PWA Installation System initialized');
+    console.log('📱 Found install buttons:', installButtons.length);
+
+    // beforeinstallprompt Event abfangen
+    window.addEventListener('beforeinstallprompt', (e) => {
+      console.log('🎯 beforeinstallprompt event fired');
+      e.preventDefault();
+      deferredPrompt = e;
+      
+      // Zeige Install-UI nur auf mobilen Geräten
+      if (isMobileDevice()) {
+        console.log('📱 Mobile device detected, showing install UI');
+        showMobileInstallPrompt();
+      } else {
+        console.log('💻 Desktop device, showing mini banner');
+        if (miniInstallBanner) {
+          miniInstallBanner.classList.remove('d-none');
+        }
+      }
+      
+      // Alle Buttons aktivieren
+      installButtons.forEach(btn => {
+        if (btn) btn.style.display = 'block';
+      });
+    });
+
+    // Install-Button Click Handler
+    async function handleInstallClick() {
+      console.log('📥 Install button clicked');
+      
+      if (!deferredPrompt) {
+        console.warn('⚠️ No deferred prompt available');
+        showInstallInstructions();
+        return;
+      }
+
+      try {
+        console.log('🚀 Triggering install prompt...');
+        
+        // Verstecke alle Install-UIs
+        hideAllInstallUIs();
+        
+        // Zeige nativen Install-Dialog
+        deferredPrompt.prompt();
+        
+        // Warte auf Benutzerentscheidung
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`📊 User choice: ${outcome}`);
+        
+        if (outcome === 'accepted') {
+          console.log('✅ PWA installation accepted');
+          showInstallSuccess();
+        } else {
+          console.log('❌ PWA installation dismissed');
+        }
+        
+        // Event kann nur einmal verwendet werden
+        deferredPrompt = null;
+        
+      } catch (error) {
+        console.error('💥 Install error:', error);
+        showInstallInstructions();
+      }
+    }
+
+    // Event-Listener für alle Install-Buttons
+    installButtons.forEach(btn => {
+      if (btn) {
+        btn.addEventListener('click', handleInstallClick);
+        console.log('🔗 Install handler attached to button:', btn.id);
+      }
+    });
+
+    // Mobile Overlay Controls
+    const mobileInstructionsBtn = document.getElementById('mobile-install-instructions');
+    const mobileDismissBtn = document.getElementById('mobile-install-dismiss');
+    const mobileNeverBtn = document.getElementById('mobile-install-never');
+
+    if (mobileInstructionsBtn) {
+      mobileInstructionsBtn.addEventListener('click', () => {
+        hideAllInstallUIs();
+        showInstallInstructions();
+      });
+    }
+
+    if (mobileDismissBtn) {
+      mobileDismissBtn.addEventListener('click', () => {
+        hideAllInstallUIs();
+        // Zeige später wieder (nach 1 Tag)
+        localStorage.setItem('pwa-install-dismissed', Date.now());
+      });
+    }
+
+    if (mobileNeverBtn) {
+      mobileNeverBtn.addEventListener('click', () => {
+        hideAllInstallUIs();
+        // Nie wieder zeigen
+        localStorage.setItem('pwa-install-never', 'true');
+      });
+    }
+
+    // Utility Functions
+    function isMobileDevice() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+             (window.innerWidth <= 768);
+    }
+
+    function showMobileInstallPrompt() {
+      // Prüfe ob schon installiert oder abgelehnt
+      if (isStandalone() || localStorage.getItem('pwa-install-never') === 'true') {
+        return;
+      }
+      
+      // Prüfe ob kürzlich dismissed
+      const dismissed = localStorage.getItem('pwa-install-dismissed');
+      if (dismissed && (Date.now() - parseInt(dismissed)) < 86400000) { // 24h
+        return;
+      }
+      
+      if (mobileOverlay) {
+        mobileOverlay.classList.remove('d-none');
+        // Animation nach kleiner Verzögerung
+        setTimeout(() => {
+          mobileOverlay.style.opacity = '1';
+        }, 100);
+      }
+    }
+
+    function hideAllInstallUIs() {
+      if (mobileOverlay) {
+        mobileOverlay.style.opacity = '0';
+        setTimeout(() => {
+          mobileOverlay.classList.add('d-none');
+        }, 300);
+      }
+      if (miniInstallBanner) {
+        miniInstallBanner.classList.add('d-none');
+      }
+    }
+
+    function isStandalone() {
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.navigator.standalone === true;
+    }
+
+    function showInstallInstructions() {
+      const instructions = getInstallInstructions();
+      alert(instructions);
+    }
+
+    function getInstallInstructions() {
+      const userAgent = navigator.userAgent;
+      
+      if (/iPhone|iPad|iPod/i.test(userAgent)) {
+        return `📱 iPhone/iPad Installation:
+        
+1. Teilen-Button (⬆️) antippen
+2. "Zum Home-Bildschirm" wählen
+3. "Hinzufügen" bestätigen`;
+      } else if (/Android/i.test(userAgent)) {
+        return `📱 Android Installation:
+        
+1. Browser-Menü öffnen (⋮)
+2. "App installieren" oder "Zum Startbildschirm hinzufügen"
+3. Installation bestätigen`;
+      } else {
+        return `💻 Desktop Installation:
+        
+1. URL-Leiste: Installations-Symbol klicken
+2. Oder Browser-Menü: "App installieren"
+3. Installation bestätigen`;
+      }
+    }
+
+    function showInstallSuccess() {
+      const toast = document.createElement('div');
+      toast.className = 'toast position-fixed bottom-0 end-0 m-3';
+      toast.innerHTML = `
+        <div class="toast-header">
+          <strong class="me-auto">✅ App installiert</strong>
+          <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+          Die Mannschaftskasse wurde erfolgreich als App installiert!
+        </div>
+      `;
+      document.body.appendChild(toast);
+      
+      const bootstrapToast = new bootstrap.Toast(toast);
+      bootstrapToast.show();
+      
+      // Cleanup nach 5 Sekunden
+      setTimeout(() => {
+        toast.remove();
+      }, 5000);
+    }
+
+    // Prüfe beim Laden ob bereits installiert
+    if (isStandalone()) {
+      console.log('✅ PWA already running in standalone mode');
+      hideAllInstallUIs();
+    }
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`PWA Installation: ${outcome}`);
+        deferredPrompt = null;
+      });
+    }
+    
+    // Service Worker Registration mit Update-Handling
+    window.addEventListener('load', () => {
+      console.log('Starting service worker registration...');
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(reg => {
+          console.log('✅ Service worker successfully registered. Scope:', reg.scope);
+          
+          // Update gefunden
+          reg.addEventListener('updatefound', () => {
+            console.log('SW update found!');
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              console.log('SW state change:', newWorker.state);
+              if (newWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  // Update verfügbar
+                  newWorkerWaiting = newWorker;
+                  console.log('SW update available!');
+                  showUpdateNotification();
+                } else {
+                  // Erste Installation
+                  console.log('SW first install - PWA ready for offline use!');
+                  showInstallationSuccess();
+                }
+              }
+            });
+          });
+        })
+        .catch(err => {
+          console.error('❌ Service worker registration failed:', err);
+        });
+    });
+
+    // Update-Benachrichtigung anzeigen
+    function showUpdateNotification() {
+      const updateNotification = document.createElement('div');
+      updateNotification.className = 'toast position-fixed bottom-0 end-0 m-3';
+      updateNotification.setAttribute('role', 'alert');
+      updateNotification.innerHTML = `
+        <div class="toast-header">
+          <strong class="me-auto">🔄 Update verfügbar</strong>
+          <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+          Eine neue Version der App ist verfügbar.
+          <div class="mt-2">
+            <button class="btn btn-primary btn-sm" onclick="updateApp()">Jetzt aktualisieren</button>
+            <button class="btn btn-secondary btn-sm" data-bs-dismiss="toast">Später</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(updateNotification);
+      
+      const toast = new bootstrap.Toast(updateNotification, { autohide: false });
+      toast.show();
+    }
+
+    // Installations-Erfolg anzeigen
+    function showInstallationSuccess() {
+      const successNotification = document.createElement('div');
+      successNotification.className = 'toast position-fixed bottom-0 end-0 m-3';
+      successNotification.innerHTML = `
+        <div class="toast-header">
+          <strong class="me-auto">✅ App installiert</strong>
+          <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+          Die Mannschaftskasse ist jetzt offline verfügbar!
+        </div>
+      `;
+      document.body.appendChild(successNotification);
+      
+      const toast = new bootstrap.Toast(successNotification);
+      toast.show();
+    }
+
+    // Status-Indikator erstellen
+    document.addEventListener('DOMContentLoaded', () => {
+      // Online/Offline Status-Indikator entfernt
+      
+      // App-Installation Banner Setup
+      setupAppInstallPrompt();
+    });
+    
+    // App-Installation Setup
+    
+    function setupAppInstallPrompt() {
+      // Prüfe, ob bereits in der App oder bereits installiert
+      const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                    window.navigator.standalone === true;
+      
+      if (isPWA) {
+        // Bereits in der App - keine Banner anzeigen
+        return;
+      }
+      
+      const isMobile = window.innerWidth <= 768;
+      
+      // Prüfe verschiedene Dismiss-Statusse
+      const dismissedForever = localStorage.getItem('appInstallNeverShow');
+      if (dismissedForever) {
+        return; // Nie wieder anzeigen
+      }
+      
+      const dismissedTime = localStorage.getItem('appInstallDismissed');
+      if (dismissedTime) {
+        const hoursSinceDismiss = (Date.now() - parseInt(dismissedTime)) / (1000 * 60 * 60);
+        if (hoursSinceDismiss < 24) {
+          // Zu früh für erneute Anzeige
+          return;
+        }
+      }
+      
+      // Mobile: Zeige Vollbild-Banner sofort beim ersten Besuch
+      if (isMobile) {
+        const hasSeenFullscreen = localStorage.getItem('hasSeenMobileInstall');
+        if (!hasSeenFullscreen) {
+          setTimeout(() => {
+            showMobileInstallOverlay();
+          }, 2000);
+          return;
+        }
+      }
+      
+      // Desktop oder bereits gesehene Mobile: Zeige normalen Banner
+      setTimeout(() => {
+        showInstallBanner();
+      }, 3000);
+    }
+    
+    function showInstallBanner() {
+      const isMobile = window.innerWidth <= 768;
+      const banner = document.getElementById(isMobile ? 'app-install-mini-banner' : 'app-install-banner');
+      
+      if (banner) {
+        banner.classList.remove('d-none');
+        
+        // Event-Listener für Install-Buttons
+        const installBtn = document.getElementById(isMobile ? 'install-app-mini-btn' : 'install-app-btn');
+        const navInstallBtn = document.getElementById('pwa-install-button');
+        
+        if (installBtn) {
+          installBtn.addEventListener('click', triggerInstall);
+        }
+        if (navInstallBtn) {
+          navInstallBtn.style.display = 'block';
+          navInstallBtn.addEventListener('click', triggerInstall);
+        }
+      }
+    }
+    
+    function triggerInstall() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('User accepted the install prompt');
+            hideInstallBanners();
+          } else {
+            console.log('User dismissed the install prompt');
+          }
+          deferredPrompt = null;
+        });
+      } else {
+        // Fallback: Anweisungen anzeigen
+        showInstallInstructions();
+      }
+    }
+    
+    function showInstallInstructions() {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isAndroid = /Android/.test(navigator.userAgent);
+      
+      let instructions = '';
+      if (isIOS) {
+        instructions = 'Tippen Sie auf das Teilen-Symbol 📤 und dann auf "Zum Home-Bildschirm"';
+      } else if (isAndroid) {
+        instructions = 'Tippen Sie auf das Menü ⋮ und dann auf "App installieren" oder "Zum Startbildschirm hinzufügen"';
+      } else {
+        instructions = 'Klicken Sie auf das Installieren-Symbol 📱 in der Adressleiste Ihres Browsers';
+      }
+      
+      alert(`📱 App-Installation:\n\n${instructions}\n\nDie App wird dann zu Ihrem Startbildschirm hinzugefügt und funktioniert offline!`);
+    }
+    
+    function dismissInstallBanner() {
+      // Speichere Dismiss-Zeitpunkt
+      localStorage.setItem('appInstallDismissed', Date.now().toString());
+      hideInstallBanners();
+    }
+    
+    function hideInstallBanners() {
+      document.getElementById('app-install-banner')?.classList.add('d-none');
+      document.getElementById('app-install-mini-banner')?.classList.add('d-none');
+      document.getElementById('pwa-install-button').style.display = 'none';
+    }
+    
+    // Lausche auf das beforeinstallprompt Event
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // Verhindere die automatische Anzeige
+      e.preventDefault();
+      // Speichere das Event für später
+      deferredPrompt = e;
+      console.log('Install prompt available');
+    });
+    
+    // App wurde installiert
+    window.addEventListener('appinstalled', (evt) => {
+      console.log('App was installed');
+      hideInstallBanners();
+      
+      // Zeige Erfolgs-Toast
+      const toast = document.createElement('div');
+      toast.className = 'toast position-fixed bottom-0 end-0 m-3 show';
+      toast.innerHTML = `
+        <div class="toast-header bg-success text-white">
+          <strong class="me-auto">📱 App installiert!</strong>
+        </div>
+        <div class="toast-body">
+          Die TSV Kasse App wurde erfolgreich installiert. Sie können sie jetzt vom Homescreen starten!
+        </div>
+      `;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 5000);
+    });
+
+    // Update-Funktion global verfügbar machen
+    window.updateApp = function() {
+      if (newWorkerWaiting) {
+        newWorkerWaiting.postMessage({ type: 'SKIP_WAITING' });
+        location.reload();
+      }
+    };
+  }
+
+  // PWA-bewusster Logout mit Warnung
+  function confirmLogout(event) {
+    event.preventDefault();
+    
+    try {
+      // Prüfe, ob App als PWA läuft
+      const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                    window.navigator.standalone === true;
+      
+      let message = "Möchten Sie sich wirklich abmelden?";
+      if (isPWA) {
+        message += "\n\n⚠️ Hinweis: Sie nutzen die PWA-Version. " +
+                   "Nach dem Logout müssen Sie sich erneut anmelden.";
+      }
+      
+      if (confirm(message)) {
+        window.location.href = "{{ url_for('logout') }}";
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback: Direkt zur Logout-URL
+      if (confirm('Möchten Sie sich abmelden?')) {
+        window.location.href = "{{ url_for('logout') }}";
+      }
+    }
+    
+    return false;
+  }
+
+  // Performance-Monitoring für PWA
+  if ('performance' in window) {
+    window.addEventListener('load', () => {
+      const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+      console.log(`PWA Load Time: ${loadTime}ms`);
+      
+      // Melde langsame Ladezeiten
+      if (loadTime > 3000) {
+        console.warn('PWA loaded slowly. Consider optimizing.');
+      }
+    });
+  }
+
+  function showMobileInstallOverlay() {
+      const overlay = document.getElementById('mobile-install-overlay');
+      if (overlay) {
+        overlay.classList.remove('d-none');
+        
+        // Event-Listener für alle Buttons
+        const installButton = document.getElementById('mobile-install-button');
+        const instructionsButton = document.getElementById('mobile-install-instructions');
+        const dismissButton = document.getElementById('mobile-install-dismiss');
+        const neverButton = document.getElementById('mobile-install-never');
+        
+        if (installButton) {
+          installButton.addEventListener('click', () => {
+            if (deferredPrompt) {
+              deferredPrompt.prompt();
+              deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                  hideMobileInstallOverlay();
+                  localStorage.setItem('hasSeenMobileInstall', 'true');
+                }
+                deferredPrompt = null;
+              });
+            } else {
+              showMobileInstallInstructions();
+            }
+          });
+        }
+        
+        if (instructionsButton) {
+          instructionsButton.addEventListener('click', showMobileInstallInstructions);
+        }
+        
+        if (dismissButton) {
+          dismissButton.addEventListener('click', () => {
+            hideMobileInstallOverlay();
+            localStorage.setItem('hasSeenMobileInstall', 'true');
+            localStorage.setItem('appInstallDismissed', Date.now().toString());
+          });
+        }
+        
+        if (neverButton) {
+          neverButton.addEventListener('click', () => {
+            hideMobileInstallOverlay();
+            localStorage.setItem('hasSeenMobileInstall', 'true');
+            localStorage.setItem('appInstallNeverShow', 'true');
+          });
+        }
+      }
+    }
+    
+    function hideMobileInstallOverlay() {
+      const overlay = document.getElementById('mobile-install-overlay');
+      if (overlay) {
+        overlay.style.animation = 'fadeOutOverlay 0.3s ease-out forwards';
+        setTimeout(() => {
+          overlay.classList.add('d-none');
+          overlay.style.animation = '';
+        }, 300);
+      }
+    }
+    
+    function showMobileInstallInstructions() {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isAndroid = /Android/.test(navigator.userAgent);
+      
+      let instructions = '';
+      let title = '📱 App-Installation';
+      
+      if (isIOS) {
+        instructions = `
+1. Tippen Sie auf das Teilen-Symbol 📤 unten in Safari
+2. Scrollen Sie nach unten und wählen Sie "Zum Home-Bildschirm"
+3. Tippen Sie auf "Hinzufügen"
+4. Die App wird zu Ihrem Startbildschirm hinzugefügt
+
+✨ Danach können Sie die App wie jede andere App öffnen!`;
+      } else if (isAndroid) {
+        instructions = `
+1. Tippen Sie auf das Menü ⋮ oben rechts im Browser
+2. Wählen Sie "App installieren" oder "Zum Startbildschirm hinzufügen"
+3. Tippen Sie auf "Installieren"
+4. Die App wird zu Ihrem App-Drawer hinzugefügt
+
+✨ Danach finden Sie die App in Ihren installierten Apps!`;
+      } else {
+        instructions = `
+1. Öffnen Sie das Browser-Menü
+2. Suchen Sie nach "App installieren" oder "Zum Startbildschirm hinzufügen"
+3. Folgen Sie den Anweisungen
+
+<!-- Service Worker Registration und Update-Handling -->
+<script>
+if ('serviceWorker' in navigator) {
+  let newWorkerWaiting = null;
+
+  // Service Worker Registration
+  window.addEventListener('load', () => {
+    console.log('🔧 Starting service worker registration...');
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('✅ Service worker successfully registered. Scope:', reg.scope);
+        
+        // Update gefunden
+        reg.addEventListener('updatefound', () => {
+          console.log('🔄 SW update found!');
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            console.log('🔄 SW state change:', newWorker.state);
+            if (newWorker.state === 'installed') {
+              if (navigator.serviceWorker.controller) {
+                newWorkerWaiting = newWorker;
+                console.log('🆕 SW update available!');
+                showUpdateNotification();
+              } else {
+                console.log('🎉 SW first install - PWA ready for offline use!');
+                showInstallationSuccess();
+              }
+            }
+          });
+        });
+      })
+      .catch(err => {
+        console.error('❌ Service worker registration failed:', err);
+      });
+  });
+
+  // Update-Benachrichtigung
+  function showUpdateNotification() {
+    const updateNotification = document.createElement('div');
+    updateNotification.className = 'toast position-fixed bottom-0 end-0 m-3';
+    updateNotification.innerHTML = '<div class="toast-header">' +
+      '<strong class="me-auto">🔄 Update verfügbar</strong>' +
+      '<button type="button" class="btn-close" data-bs-dismiss="toast"></button>' +
+      '</div>' +
+      '<div class="toast-body">' +
+      'Eine neue Version der App ist verfügbar.' +
+      '<div class="mt-2">' +
+      '<button class="btn btn-primary btn-sm" onclick="updateApp()">Jetzt aktualisieren</button>' +
+      '<button class="btn btn-secondary btn-sm" data-bs-dismiss="toast">Später</button>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(updateNotification);
+    
+    const toast = new bootstrap.Toast(updateNotification, { autohide: false });
+    toast.show();
+  }
+
+  // Installations-Erfolg
+  function showInstallationSuccess() {
+    const successNotification = document.createElement('div');
+    successNotification.className = 'toast position-fixed bottom-0 end-0 m-3';
+    successNotification.innerHTML = '<div class="toast-header">' +
+      '<strong class="me-auto">✅ PWA bereit</strong>' +
+      '<button type="button" class="btn-close" data-bs-dismiss="toast"></button>' +
+      '</div>' +
+      '<div class="toast-body">' +
+      'Die App ist jetzt für Offline-Nutzung bereit!' +
+      '</div>';
+    document.body.appendChild(successNotification);
+    
+    const toast = new bootstrap.Toast(successNotification);
+    toast.show();
+  }
+
+  // App Update durchführen
+  window.updateApp = function() {
+    if (newWorkerWaiting) {
+      newWorkerWaiting.postMessage({ action: 'skipWaiting' });
+      newWorkerWaiting = null;
+      window.location.reload();
+    }
+  };
+}
+
+// Banner-Verwaltung
+function dismissInstallBanner() {
+  const banner = document.getElementById('pwa-install-banner');
+  const miniBanner = document.getElementById('app-install-mini-banner');
+  
+  if (banner) banner.classList.add('d-none');
+  if (miniBanner) miniBanner.classList.add('d-none');
+  
+  localStorage.setItem('install-banner-dismissed', Date.now());
+}
+
+// Einfache Dark Mode Toggle Funktion
+function toggleDarkMode() {
+    console.log('toggleDarkMode called'); // Debug
+    
+    const htmlElement = document.documentElement;
+    const currentTheme = htmlElement.getAttribute('data-bs-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    console.log('Switching from', currentTheme, 'to', newTheme); // Debug
+    
+    // Theme umschalten
+    htmlElement.setAttribute('data-bs-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    
+    // Icon aktualisieren
+    const darkModeIcon = document.getElementById('darkModeIcon');
+    if (darkModeIcon) {
+        darkModeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+    }
+}
+
+// Dark Mode Funktionalität - Initialisierung beim Laden
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dark Mode Script loaded'); // Debug-Info
+    
+    const htmlElement = document.documentElement;
+    const darkModeIcon = document.getElementById('darkModeIcon');
+
+    // Gespeicherten Theme-Status laden
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    console.log('Saved theme:', savedTheme); // Debug-Info
+    htmlElement.setAttribute('data-bs-theme', savedTheme);
+    
+    // Icon entsprechend setzen
+    if (darkModeIcon) {
+        darkModeIcon.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+    }
+});
+</script>
+</body>
+</html>

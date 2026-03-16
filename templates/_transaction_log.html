@@ -1,0 +1,81 @@
+<div class="manager-card border-top border-4 border-dark">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="section-title mb-0"><i class="bi bi-journal-text"></i> Systemprotokoll</h5>
+        <div class="d-flex gap-2">
+            {% if not show_all_logs %}
+            <a href="{{ url_for('admin', show_all_logs='1', season=selected_season) }}" class="btn btn-sm btn-outline-primary shadow-sm">Alle laden</a>
+            {% else %}
+            <a href="{{ url_for('admin', season=selected_season) }}" class="btn btn-sm btn-outline-secondary shadow-sm">Weniger anzeigen</a>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="table-responsive rounded-3 border">
+        <table class="table table-sm table-hover table-striped mb-0 small">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th class="py-2 ps-2">Datum</th>
+                    <th class="py-2">Eintrag</th>
+                    <th class="py-2 text-end">Betrag</th>
+                    <th class="py-2 text-center" style="width: 50px;">Aktion</th>
+                </tr>
+            </thead>
+            <tbody id="transaction-log-body">
+            {% for tx in transaction_log %}
+                <tr id="dash-tx-row-{{ tx.__class__.__name__ }}-{{ tx.id }}">
+                    <td class="ps-2 align-middle">
+                        {{ tx.date.strftime('%d.%m.%y') }}
+                        <div class="text-muted" style="font-size:0.7em;">{{ tx.created_by or '' }}</div>
+                    </td>
+                    <td class="align-middle">
+                        {{ tx.description }} 
+                        <span class="text-muted d-block small">{{ tx.player.name if tx.player else '' }}</span>
+                    </td>
+                    <td class="text-end align-middle">
+                        {% if tx.__class__.__name__ == 'Transaction' %}
+                            <span class="fw-bold font-monospace {% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                {{ "%.2f €"|format(tx.amount) }}
+                            </span>
+                        {% elif tx.__class__.__name__ == 'KistlTransaction' %}
+                            <span class="badge bg-warning text-dark border shadow-sm">{{ tx.amount }} Kistl</span>
+                        {% elif tx.__class__.__name__ == 'TeamExpense' %}
+                            <span class="fw-bold font-monospace text-danger">-{{ "%.2f €"|format(tx.amount) }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center align-middle">
+                        {% set show_delete = False %}
+                        {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
+                            {% if tx.team == 'team1' and current_user.role in ['trikot_manager_1', 'strafen_manager_1'] %}
+                                {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                            {% endif %}
+                            {% if tx.team == 'team2' and current_user.role in ['trikot_manager_2', 'strafen_manager_2'] %}
+                                {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                            {% endif %}
+                        {% endif %}
+                        {% if not show_delete and tx.created_by == current_user.username and tx.created_at %}
+                            {% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                        {% endif %}
+
+                        {% if show_delete %}
+                        <div class="d-flex justify-content-center gap-1">
+                            {% if tx.__class__.__name__ == 'Transaction' and tx.amount <= 0 and 'gg.' in tx.description %}
+                            <form action="{{ url_for('delete_transaction_bulk', tx_id=tx.id) }}" method="POST" class="ajax-form m-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-danger py-0 px-1 shadow-sm" data-confirm="Komplettes Spiel löschen?">All</button>
+                            </form>
+                            {% endif %}
+                            <form action="{% if tx.__class__.__name__ == 'Transaction' %}{{ url_for('delete_transaction', tx_id=tx.id) }}{% elif tx.__class__.__name__ == 'KistlTransaction' %}{{ url_for('delete_kistl_transaction', tx_id=tx.id) }}{% elif tx.__class__.__name__ == 'TeamExpense' %}{{ url_for('delete_team_expense', tx_id=tx.id) }}{% endif %}" method="POST" class="ajax-form m-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2 shadow-sm" data-confirm="Eintrag wirklich löschen?">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

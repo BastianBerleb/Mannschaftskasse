@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Offline - Mannschaftskasse{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <div class="card">
+                <div class="card-body">
+                    <h1 class="display-1">📱</h1>
+                    <h2 class="card-title">Offline-Modus</h2>
+                    <p class="card-text text-muted">
+                        Du bist derzeit nicht mit dem Internet verbunden. 
+                        Einige Funktionen sind möglicherweise nicht verfügbar.
+                    </p>
+                    
+                    <div class="mt-4">
+                        <h5>Was du tun kannst:</h5>
+                        <ul class="list-unstyled">
+                            <li>🔄 Verbindung überprüfen</li>
+                            <li>📱 Zwischengespeicherte Daten anzeigen</li>
+                            <li>⏰ Später erneut versuchen</li>
+                        </ul>
+                    </div>
+                    
+                    <button onclick="manualRetry()" class="btn btn-primary mt-3" id="retry-btn">
+                        🔄 Erneut versuchen
+                    </button>
+                    
+                    <a href="/" class="btn btn-outline-secondary mt-3">
+                        🏠 Zur Startseite
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function manualRetry() {
+        if (navigator.onLine) {
+            handleOnlineReturn();
+        } else {
+            window.location.reload();
+        }
+    }
+
+    function handleOnlineReturn() {
+        const btn = document.getElementById('retry-btn');
+        if(btn) {
+            btn.innerHTML = '✅ Online! Weiterleitung...';
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-success');
+        }
+        
+        const returnUrl = sessionStorage.getItem('offline_return_url');
+        if (returnUrl) {
+            sessionStorage.removeItem('offline_return_url');
+            window.location.href = returnUrl;
+        } else {
+            // Default fallback
+            window.location.href = "/";
+        }
+    }
+
+    // Auto-Redirect when connection comes back
+    window.addEventListener('online', function() {
+        console.log("Connection restored. Redirecting...");
+        handleOnlineReturn();
+    });
+</script>
+{% endblock %}

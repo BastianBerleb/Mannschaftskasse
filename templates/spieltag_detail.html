@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Spieltag-Details - {{ game_description }}{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #10b981, #059669);
+        --success-gradient: linear-gradient(135deg, #10b981, #0d9488);
+        --card-bg: #ffffff;
+        --card-shadow: var(--shadow-md);
+        --text-main: #1e293b;
+        --header-bg: #ffffff;
+        --border-color: rgba(0,0,0,0.05);
+        --hover-bg: #f8fafc;
+    }
+
+    html[data-theme="dark"] {
+        --card-bg: var(--bs-secondary-bg);
+        --text-main: #f1f5f9;
+        --header-bg: #1e293b;
+        --border-color: rgba(255,255,255,0.1);
+        --hover-bg: #334155;
+    }
+
+    .page-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding: 2rem 0;
+        background: var(--header-bg);
+        border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+        box-shadow: var(--shadow-sm);
+        margin-top: -1.5rem;
+    }
+
+    .page-title {
+        font-weight: 800;
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+
+    .content-card {
+        border: none;
+        border-radius: 20px;
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+    }
+
+    .summary-card {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .player-list-item {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: background 0.2s;
+    }
+    .player-list-item:hover { background: var(--hover-bg); }
+    .player-list-item:last-child { border-bottom: none; }
+
+    .player-name { font-weight: 600; color: var(--text-main); }
+    .payment-badge {
+        font-weight: 700;
+        padding: 0.4rem 0.8rem;
+        border-radius: 50rem;
+        font-size: 0.9rem;
+    }
+
+    /* DARK MODE OVERRIDES REMOVED - NOW USING VARIABLES */
+</style>
+
+<div class="page-header">
+    <div class="container">
+        <h1 class="page-title display-6">{{ game_description }}</h1>
+        <div class="d-flex justify-content-center align-items-center gap-2">
+            <h5 class="text-muted mb-0">{{ game_date.strftime('%d.%m.%Y') }}</h5>
+            {% if team == 'team1' %}
+                <span class="badge bg-danger rounded-pill px-3">1. Mannschaft</span>
+            {% elif team == 'team2' %}
+                <span class="badge bg-success rounded-pill px-3">2. Mannschaft</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="container pb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            
+            <!-- Summary stats -->
+            <div class="summary-card">
+                <div class="small text-uppercase opacity-75 mb-1" style="letter-spacing: 1px;">Gesamteinnahmen Spieltag</div>
+                <div class="display-5 fw-bold">{{ "%.2f"|format(total_amount) }} €</div>
+                <div class="mt-2 small opacity-75">{{ paid_players_tx|length }} Spieler haben gezahlt</div>
+            </div>
+
+            <!-- Participants List -->
+            <div class="content-card mb-4">
+                <div class="p-3 border-bottom" style="background: var(--bs-tertiary-bg);">
+                    <h6 class="mb-0 fw-bold text-main"><i class="bi bi-people-fill me-2"></i>Kader & Buchungen</h6>
+                </div>
+                
+                <div class="player-list">
+                    {% for tx in paid_players_tx %}
+                    <div class="player-list-item">
+                        <span class="player-name">{{ tx.player.name }}</span>
+                        <span class="payment-badge bg-success bg-opacity-10 text-success">
+                            +{{ "%.2f"|format(tx.amount|abs) }} €
+                        </span>
+                    </div>
+                    {% endfor %}
+
+                    {% for tx in zero_amount_players_tx %}
+                    <div class="player-list-item">
+                        <div class="d-flex flex-column">
+                            <span class="player-name text-muted">{{ tx.player.name }}</span>
+                            <small class="text-muted" style="font-size: 0.7rem;">Hat nicht gespielt / anderes Team</small>
+                        </div>
+                        <span class="payment-badge bg-light text-muted">
+                            0.00 €
+                        </span>
+                    </div>
+                    {% endfor %}
+                    
+                    {% if not paid_players_tx and not zero_amount_players_tx %}
+                    <div class="p-5 text-center text-muted">
+                        <i class="bi bi-info-circle fs-1 opacity-25 mb-2 d-block"></i>
+                        Keine Teilnehmer erfasst.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="text-center">
+                <a href="{{ url_for('spieltag_log') }}" class="btn btn-outline-secondary rounded-pill px-4">
+                    <i class="bi bi-arrow-left me-2"></i>Zurück zum Spieltag-Log
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

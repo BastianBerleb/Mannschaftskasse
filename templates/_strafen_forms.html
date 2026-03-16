@@ -1,0 +1,153 @@
+<!-- 1. STRAFE AUS KATALOG -->
+<div class="manager-card border-top border-4 border-danger">
+    <h5 class="section-title"><i class="bi bi-book"></i> Strafe aus Katalog</h5>
+    <form action="{{ url_for('add_transaction') }}" method="POST" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Spieler</label>
+                <select name="player_id" id="fine_catalog_player_select" class="form-select searchable-select" required>
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in active_players %}
+                    <option value="{{ player.id }}">{{ player.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Strafe</label>
+                <!-- NOTE: Not using TomSelect here because of custom JS logic relying on options.text -->
+                <select name="fine_id" id="fine_catalog_select" class="form-select" required>
+                    <option value="" disabled selected>-- Strafe wählen --</option>
+                    <optgroup label="Spiel">{% for fine in fines if fine.category == 'game' %}<option value="{{ fine.id }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>{% endfor %}</optgroup>
+                    <optgroup label="Training">{% for fine in fines if fine.category == 'training' %}<option value="{{ fine.id }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>{% endfor %}</optgroup>
+                    <optgroup label="Allgemeines">{% for fine in fines if fine.category == 'general' or not fine.category %}<option value="{{ fine.id }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>{% endfor %}</optgroup>
+                </select>
+            </div>
+             <div class="col-12" id="fine_multiplier_div" style="display:none;">
+                <label class="form-label small text-muted">Anzahl</label>
+                <input type="number" name="multiplier" id="fine_multiplier" class="form-control" value="1" min="1">
+                <div class="form-text text-muted">Die Strafe enthält "pro", daher können Sie hier die Anzahl eingeben.</div>
+            </div>
+            <div class="col-12 mt-4">
+                <button type="submit" class="btn btn-danger w-100 py-2 fw-bold shadow-sm">Strafe buchen</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 2. INDIVIDUELLE STRAFE -->
+<div class="manager-card border-top border-4 border-warning">
+    <h5 class="section-title"><i class="bi bi-pencil-square"></i> Individuelle Strafe</h5>
+    <form action="{{ url_for('add_custom_fine') }}" method="POST" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="small text-muted">Spieler</label>
+                <select name="player_id" id="custom_fine_player_select" class="form-select searchable-select" required>
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in active_players %}
+                    <option value="{{ player.id }}">{{ player.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="small text-muted">Grund</label>
+                <input type="text" name="description" class="form-control" placeholder="Beschreibung der Strafe" required>
+            </div>
+            <div class="col-8">
+                <label class="small text-muted">Betrag/Menge</label>
+                <input type="number" step="any" name="amount" class="form-control" required placeholder="0.00">
+            </div>
+            <div class="col-4">
+                <label class="small text-muted">Einheit</label>
+                <select name="type" class="form-select">
+                    <option value="money">€</option>
+                    <option value="kistl">Kistl</option>
+                </select>
+            </div>
+            <div class="col-12 mt-3">
+                <button type="submit" class="btn btn-warning text-dark w-100 py-2 fw-bold shadow-sm">Individuelle Strafe buchen</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 3. KISTL BEGLEICHEN -->
+<div class="manager-card border-top border-4 border-info">
+    <h5 class="section-title"><i class="bi bi-box-seam"></i> Kistl begleichen</h5>
+    <form id="kistl-settle-form" action="" method="POST" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="small text-muted">Spieler mit Kistl-Schulden</label>
+                <select id="kistl_player_select" class="form-select searchable-select" required onchange="document.getElementById('kistl-settle-form').action = '/admin/settle-kistl/' + this.value;">
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in kistl_debtors %}
+                    {% if player.kistl_balance < 0 %}
+                    <option value="{{ player.id }}">{{ player.name }} ({{ player.kistl_balance|abs }} offen)</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 mt-3">
+                <button type="submit" class="btn btn-info text-dark w-100 py-2 fw-bold shadow-sm">1 Kistl als bezahlt markieren</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 4. EINZAHLUNG FÜR STRAFEN VERBUCHEN -->
+<div class="manager-card border-top border-4 border-success">
+    <h5 class="section-title"><i class="bi bi-wallet2"></i> Einzahlung verbuchen (Strafen)</h5>
+    <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        <input type="hidden" name="payment_category" value="fine"> <!-- ONLY Strafen -->
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Spieler</label>
+                <select name="player_id" id="strafen_einzahl_player" class="form-select searchable-select" required>
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in active_players %}
+                    <option value="{{ player.id }}">{{ player.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <div class="alert alert-info py-2 px-3 small border-0 mb-0 rounded-3">
+                    <i class="bi bi-info-circle me-1"></i> Dieser Betrag wird als Einzahlung für Strafen verbucht, erhöht aber das allgemeine Guthaben des Spielers in der Mannschaftskasse.
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-bold">Betrag (€)</label>
+                <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0">
+            </div>
+            <div class="col-12 mt-4">
+                <button type="submit" class="btn btn-success w-100 py-2 fw-bold shadow-sm">Einzahlung buchen</button>
+            </div>
+        </div>
+    </form>
+</div>

@@ -1,0 +1,17 @@
+<form method="GET" class="d-flex align-items-center gap-3 flex-wrap">
+    <label for="season-select" class="form-label mb-0 fw-bold text-nowrap">Saison anzeigen:</label>
+    <select name="season" id="season-select" class="form-select" style="width: auto; min-width: 200px;" onchange="this.form.submit()">
+        {% for season in available_seasons %}
+        <option value="{{ season }}" {% if season == selected_season %}selected{% endif %}>
+            Saison {{ season }}
+        </option>
+        {% endfor %}
+    </select>
+    
+    <!-- Versteckte Felder, um andere Filter (z.B. Suche) beizubehalten -->
+    {% for key, value in other_query_params.items() %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+    {% endfor %}
+
+    <noscript><button type="submit" class="btn btn-sm btn-primary">Anzeigen</button></noscript>
+</form>

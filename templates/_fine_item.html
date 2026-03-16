@@ -1,0 +1,61 @@
+<li class="list-group-item" id="fine-item-{{ fine.id }}">
+    <div class="d-flex justify-content-between align-items-center" id="fine-display-{{ fine.id }}">
+        <div>
+            {% if fine.team == 'team1' %}
+                <span class="badge bg-primary me-2">M1</span>
+            {% else %}
+                <span class="badge bg-secondary me-2">M2</span>
+            {% endif %}
+            
+            {% if fine.category == 'game' %}
+                <span class="badge bg-warning text-dark me-2">Spiel</span>
+            {% elif fine.category == 'training' %}
+                <span class="badge bg-info text-dark me-2">Training</span>
+            {% else %}
+                <span class="badge bg-light text-dark me-2 border">Allgemein</span>
+            {% endif %}
+
+            {{ fine.description }} 
+            <span class="badge bg-secondary ms-2">
+                {% if fine.type == 'money' %}{{ "%.2f"|format(fine.amount) }} €{% else %}{{ fine.amount|int }} Kistl{% endif %}
+            </span>
+        </div>
+        <div>
+            <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="document.getElementById('fine-display-{{ fine.id }}').style.display='none'; document.getElementById('fine-edit-{{ fine.id }}').style.display='block';">Bearbeiten</button>
+            <form action="{{ url_for('delete_fine', fine_id=fine.id) }}" method="POST" class="ajax-form d-inline-block">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-sm btn-outline-danger" data-confirm="Soll die Strafe '{{ fine.description }}' wirklich gelöscht werden?">Löschen</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="fine-edit-{{ fine.id }}" style="display: none;">
+        <form action="{{ url_for('edit_fine', fine_id=fine.id) }}" method="POST" class="ajax-form row g-2 align-items-center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+             <div class="col-12 mb-2"><strong>Strafe bearbeiten</strong></div>
+             <div class="col-md-3">
+                 <select name="category" class="form-select form-select-sm" required>
+                     <option value="general" {% if fine.category == 'general' %}selected{% endif %}>Allgemeines</option>
+                     <option value="game" {% if fine.category == 'game' %}selected{% endif %}>Spiel</option>
+                     <option value="training" {% if fine.category == 'training' %}selected{% endif %}>Training</option>
+                 </select>
+             </div>
+             <div class="col-md-4">
+                 <input type="text" class="form-control form-control-sm" name="description" value="{{ fine.description }}" required>
+             </div>
+             <div class="col-md-2">
+                 <input type="number" step="any" class="form-control form-control-sm" name="amount" value="{{ fine.amount }}" required>
+             </div>
+             <div class="col-md-2">
+                  <select name="type" class="form-select form-select-sm">
+                      <option value="money" {% if fine.type == 'money' %}selected{% endif %}>€</option>
+                      <option value="kistl" {% if fine.type == 'kistl' %}selected{% endif %}>Kistl</option>
+                  </select>
+             </div>
+             <div class="col-md-2 d-flex gap-1">
+                 <button type="submit" class="btn btn-sm btn-success w-100">Speichern</button>
+                 <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('fine-edit-{{ fine.id }}').style.display='none'; document.getElementById('fine-display-{{ fine.id }}').style.display='flex';">Abbr.</button>
+             </div>
+        </form>
+    </div>
+</li>

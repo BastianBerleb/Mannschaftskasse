@@ -1,0 +1,296 @@
+// Automatischer Versions-Hash: {{ files_hash }} - Updated 2026-01-11-manifest-fix
+
+const CACHE_NAME = 'tsv-kasse-v{{ files_hash[:8] }}-20260111-fix2';
+const STATIC_CACHE = 'tsv-static-v{{ files_hash[:8] }}-fix';
+const API_CACHE = 'tsv-api-v{{ files_hash[:8] }}-fix';
+
+// Statische Ressourcen, die immer gecacht werden sollen
+const STATIC_ASSETS = [
+  '/',
+  '/offline',
+  '/login',
+  '/static/css/bootstrap.min.css',
+  '/static/js/bootstrap.bundle.min.js',
+  '/static/js/push-manager.js',
+  '/static/images/tsv-alteglofsheim.jpg',
+  '/static/app/manifest.json'
+];
+
+// API-Routen, die gecacht werden sollen
+const API_ROUTES = [
+  '/strafenkatalog', 
+  '/kasse/team1',
+  '/kasse/team2',
+  '/anleitung',
+  '/login'
+];
+
+// Lausche auf eine Nachricht vom Client, um die Wartephase zu überspringen
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Background Sync für Offline-Aktionen
+self.addEventListener('sync', event => {
+  if (event.tag === 'background-sync') {
+    event.waitUntil(doBackgroundSync());
+  }
+});
+
+async function doBackgroundSync() {
+  // Versuche offline gespeicherte Aktionen zu synchronisieren
+  try {
+    const offlineActions = await getOfflineActions();
+    for (const action of offlineActions) {
+      await syncAction(action);
+    }
+    await clearOfflineActions();
+  } catch (error) {
+    console.log('Background sync failed:', error);
+  }
+}
+
+async function getOfflineActions() {
+  // Implementierung für offline gespeicherte Aktionen
+  return [];
+}
+
+async function syncAction(action) {
+  // Implementierung für Action-Synchronisation
+  return fetch(action.url, action.options);
+}
+
+async function clearOfflineActions() {
+  // Lösche erfolgreich synchronisierte Aktionen
+}
+
+// Installation: Cache statische Ressourcen
+self.addEventListener('install', event => {
+  self.skipWaiting(); // Force update immediately
+  event.waitUntil(
+    caches.open(STATIC_CACHE)
+      .then(cache => {
+        // Use individual add to prevent one failure from breaking all
+        return Promise.allSettled(STATIC_ASSETS.map(url => 
+            cache.add(url).catch(() => {})
+        ));
+      })
+  );
+});
+
+// Aktivierung: Alte Caches löschen
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME && 
+                cacheName !== STATIC_CACHE && 
+                cacheName !== API_CACHE) {
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      })
+      .then(() => self.clients.claim())
+  );
+});
+
+// Fetch: Intelligente Caching-Strategie
+self.addEventListener('fetch', event => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Nur GET-Requests cachen
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  // Navigation Requests (HTML-Seiten) - wichtig für App-Reload
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, responseClone))
+              .catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request)
+            .then(response => {
+              if (response) {
+                return response;
+              }
+              // Fallback zur Hauptseite wenn verfügbar
+              return caches.match('/')
+                .then(response => response || caches.match('/offline'));
+            });
+        })
+    );
+    return;
+  }
+
+  // Statische Ressourcen: Cache First für beste Performance
+  if (request.url.includes('/static/')) {
+    event.respondWith(
+      caches.match(request)
+        .then(response => {
+          if (response) {
+            return response;
+          }
+          return fetch(request)
+            .then(fetchResponse => {
+              if (fetchResponse.ok) {
+                const responseClone = fetchResponse.clone();
+                caches.open(STATIC_CACHE)
+                  .then(cache => cache.put(request, responseClone))
+                  .catch(() => {});
+              }
+              return fetchResponse;
+            });
+        })
+    );
+    return;
+  }
+
+  // API-Routen: Network First mit Cache Fallback
+  if (API_ROUTES.some(route => url.pathname === route)) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(API_CACHE)
+              .then(cache => cache.put(request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request)
+            .then(response => response || caches.match('/offline'));
+        })
+    );
+    return;
+  }
+
+  // Hauptseiten: Network First mit Cache Fallback
+  if (url.pathname === '/' || url.pathname.startsWith('/player/')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => cache.put(request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request)
+            .then(response => response || caches.match('/offline'));
+        })
+    );
+    return;
+  }
+
+  // Alle anderen Requests: Network First mit Offline-Fallback
+  event.respondWith(
+    fetch(request)
+      .then(response => {
+        if (response.ok && url.origin === location.origin) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME)
+            .then(cache => cache.put(request, responseClone));
+        }
+        return response;
+      })
+      .catch(() => {
+        return caches.match(request)
+          .then(response => response || caches.match('/offline'));
+      })
+  );
+});
+
+// Push-Notifications mit App Badge
+self.addEventListener('push', event => {
+    const data = event.data.json();
+    const title = data.title;
+    const options = {
+        body: data.body,
+        icon: '/static/images/tsv-alteglofsheim.jpg', 
+        badge: '/static/images/tsv-alteglofsheim.jpg',
+        vibrate: [100, 50, 100],
+        data: {
+            url: data.url
+        },
+        actions: [
+            {
+                action: 'view',
+                title: 'Anzeigen'
+            },
+            {
+                action: 'close',
+                title: 'Schließen'
+            }
+        ]
+    };
+    
+    // App Badge aktualisieren (via navigator API)
+    if (navigator && navigator.setAppBadge) {
+        try { navigator.setAppBadge(1); } catch (e) { console.warn('Badge error', e); }
+    }
+    
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    
+    // Badge zurücksetzen
+    if (navigator && navigator.clearAppBadge) {
+        try { navigator.clearAppBadge(); } catch (e) { console.warn('Badge clear error', e); }
+    }
+    
+    if (event.action === 'close') {
+      return;
+    }
+    
+    // URL bestimmen
+    const urlToOpen = event.notification.data.url;
+
+    // Versuche erst, ein existierendes Fenster zu finden und zu fokussieren
+    const promiseChain = clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+    }).then((windowClients) => {
+        // Prüfen, ob wir genau dieses URL schon offen haben
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if (client.url === urlToOpen && 'focus' in client) {
+                return client.focus();
+            }
+        }
+        
+        // Wenn nicht, prüfen ob wir IRGENDEIN Fenster der App haben und navigieren es
+        for (let i = 0; i < windowClients.length; i++) {
+            const client = windowClients[i];
+            if ('focus' in client && 'navigate' in client) {
+                return client.focus().then(c => c.navigate(urlToOpen));
+            }
+        }
+        
+        // Wenn kein Fenster offen ist, neues öffnen
+        if (clients.openWindow) {
+            return clients.openWindow(urlToOpen);
+        }
+    });
+
+    event.waitUntil(promiseChain);
+});

@@ -1,0 +1,40 @@
+<!-- templates/spieltag_log.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Spieltag-Log</h1>
+</div>
+
+{% include "_season_selector.html" %}
+
+<div class="list-group">
+    {% for game in games %}
+    {# ÄNDERUNG HIER: Wir übergeben den KODIERTEN Parameter an die URL #}
+    <a href="{{ url_for('spieltag_detail', game_date_str=game.date.strftime('%Y-%m-%d'), game_description_encoded=quote_plus(game.game_desc), team=game.team) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-1">
+                {{ game.game_desc }}
+                {% if game.team == 'team1' %}
+                    <span class="badge bg-danger ms-2">Erste</span>
+                {% elif game.team == 'team2' %}
+                    <span class="badge bg-success ms-2">Zweite</span>
+                {% endif %}
+            </h5>
+            <small>{{ game.date.strftime('%d.%m.%Y') }}</small>
+        </div>
+        <div class="text-end">
+            <span class="badge bg-primary rounded-pill mb-1 d-block">{{ game.active_count }} gespielt</span>
+            {% if game.zero_count > 0 %}
+            <span class="badge bg-secondary rounded-pill d-block text-wrap" style="max-width: 160px; font-size: 0.75em;">{{ game.zero_count }} nicht gespielt oder andere Mannschaft</span>
+            {% endif %}
+        </div>
+    </a>
+    {% else %}
+    <div class="list-group-item">
+        <p class="text-center text-muted">In der ausgewählten Saison wurden noch keine Spiele erfasst.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

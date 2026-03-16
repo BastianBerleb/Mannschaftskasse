@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Gruppenerinnerung</h1>
+</div>
+
+{% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] %}
+
+
+    <div class="mb-3 p-3 bg-light rounded">
+         <h6 class="mb-3">Aktionen</h6>
+         <!-- Actions Row -->
+         <div class="d-flex gap-2 flex-wrap align-items-center">
+            {% if current_user.role not in ['auditor', 'viewer'] %}
+                <button id="copy-image-msg-btn" class="btn btn-outline-primary" onclick="copyToClipboard('whatsapp-image-message-content', this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-text me-1" viewBox="0 0 16 16"><path d="M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1H5zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zM5 8a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1H5zm0 2a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1H5z"/><path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z"/></svg>
+                    Text für Bild
+                </button>
+                <button class="btn btn-secondary" onclick="copyDebtImage()">Bild in Zwischenablage</button>
+                <a href="/schulden/image" download="schulden_uebersicht.png" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>    
+                    Bild speichern
+                </a>
+            {% else %}
+                <div class="text-muted fst-italic border p-2 bg-white rounded">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye-fill me-1" viewBox="0 0 16 16"><path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/><path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/></svg>
+                    Als {{ current_user.role|title }} hast du hier nur Lesezugriff.
+                </div>
+            {% endif %}
+         </div>
+    </div>
+    
+    <script>
+        // Fallbacks: falls admin.js noch nicht geladen wurde
+        if (typeof window.copyGroupMessage !== 'function') {
+            window.copyGroupMessage = function() {
+                const btn = document.getElementById('copy-group-msg-btn');
+                if (btn) { btn.click(); return; }
+                const ta = document.getElementById('whatsapp-group-message-content');
+                if (ta && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(ta.value).catch(()=>alert('Kopieren nicht möglich'));
+                } else {
+                    alert('Kopieren nicht möglich (Clipboard API fehlt)');
+                }
+            };
+        }
+        if (typeof window.copyDebtImage !== 'function') {
+            window.copyDebtImage = async function() {
+                const img = document.getElementById('debt-overview-image');
+                if (!img) { alert('Kein Bild verfügbar'); return; }
+                try {
+                    const resp = await fetch(img.src);
+                    const blob = await resp.blob();
+                    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                    alert('Bild kopiert');
+                } catch (e) {
+                    alert('Bildkopie nicht möglich (Browser/HTTPS nötig)');
+                }
+            };
+        }
+    </script>
+
+    <!-- Image Preview & Controls -->
+    <div class="mt-4 text-center">
+        <h6>Vorschau Schuldenübersicht:</h6>
+        
+        <div class="btn-group mb-3" role="group" aria-label="Bild-Filter">
+          <button type="button" class="btn btn-outline-secondary active" onclick="updateImage('all', this)">Gesamt</button>
+          
+          {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1', 'viewer'] %}
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team1', this)">Erste</button>
+          {% endif %}
+          
+          {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2', 'viewer'] %}
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team2', this)">Zweite</button>
+          {% endif %}
+        </div>
+    
+        <br>
+        
+        <!-- Ladebalken: Wird eingeblendet während das Bild generiert/geladen wird -->
+        <div id="loading-bar-container" class="progress mb-2 mx-auto" style="height: 10px; width: 60%; display: none;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 100%"></div>
+        </div>
+        
+         <img id="debt-overview-image" src="/schulden/image?filter=all" alt="Schuldenübersicht" style="max-width:100%; border:1px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+    </div>
+    
+<!-- Versteckte Textareas für die Bild-Nachrichten -->
+    <textarea id="msg-all" style="display: none;">{{ msg_all }}</textarea>
+    <textarea id="msg-team1" style="display: none;">{{ msg_t1 }}</textarea>
+    <textarea id="msg-team2" style="display: none;">{{ msg_t2 }}</textarea>
+    <textarea id="whatsapp-image-message-content" style="display: none;">{{ msg_all }}</textarea>
+
+{% else %}
+    <div class="alert alert-warning">
+        Du hast keine Berechtigung, diesen Bereich zu sehen.
+    </div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function copyToClipboard(elementId, btnElement) {
+        const textToCopy = document.getElementById(elementId).value;
+        const previousHtml = btnElement.innerHTML;
+        const previousClass = btnElement.className;
+        
+        navigator.clipboard.writeText(textToCopy).then(function() {
+            btnElement.innerHTML = '✅ Kopiert!';
+            btnElement.className = 'btn btn-secondary';
+            setTimeout(function() {
+                btnElement.innerHTML = previousHtml;
+                btnElement.className = previousClass;
+            }, 2000);
+        }, function(err) {
+            alert('Kopieren fehlgeschlagen. Bitte manuell kopieren.');
+        });
+    }
+
+    function updateImage(filter, btn) {
+        console.log("updateImage called with filter:", filter);
+        
+        // Update the active text message based on filter
+        const msgId = 'msg-' + (filter === 'all' ? 'all' : filter);
+        const sourceMsg = document.getElementById(msgId);
+        const targetMsg = document.getElementById('whatsapp-image-message-content');
+        if (sourceMsg && targetMsg) {
+            targetMsg.value = sourceMsg.value;
+        }
+        
+        // Active Klasse umschalten
+        const group = btn.parentElement;
+        Array.from(group.children).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // Bildquelle ändern (Cache-Busting mit Zeitstempel)
+        const img = document.getElementById('debt-overview-image');
+        if(!img) {
+            console.error("Image element not found!");
+            return;
+        }
+
+        // Visuelles Feedback (Opacity + Ladebalken)
+        img.style.opacity = '0.5';
+        const bar = document.getElementById('loading-bar-container');
+        if(bar) bar.style.display = 'flex';
+        
+        const newSrc = '/schulden/image?filter=' + filter + '&t=' + Date.now();
+        console.log("Setting new src:", newSrc);
+        
+        img.onload = function() {
+            img.style.opacity = '1.0';
+            if(bar) bar.style.display = 'none';
+        };
+        img.onerror = function() {
+            img.style.opacity = '1.0';
+            if(bar) bar.style.display = 'none';
+            alert('Fehler beim Laden des Bildes.');
+        };
+        
+        img.src = newSrc;
+    }
+    
+    // Global verfügbar machen
+    window.updateImage = updateImage;
+</script>
+{% endblock %}

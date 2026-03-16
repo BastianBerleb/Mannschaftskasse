@@ -1,0 +1,1568 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+    /* Admin UI Modernization */
+    :root {
+        --card-bg: #ffffff;
+        --card-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        --card-radius: 16px;
+        --bg-color: #f8f9fa;
+    }
+
+    body {
+        background-color: var(--bg-color);
+    }
+
+    /* Custom Scrollbar for Tabs */
+    .overflow-x-auto {
+        overflow-x: auto; /* Ensure scrolling works */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    }
+    .overflow-x-auto::-webkit-scrollbar {
+        height: 4px;
+        display: none; /* Scrollbar mobil oft störend, besser ausblenden oder sehr dezent */
+    }
+    /* Scrollbar nur auf Hover anzeigen (Desktop) */
+    .overflow-x-auto:hover::-webkit-scrollbar {
+        display: block;
+    }
+    .overflow-x-auto::-webkit-scrollbar-thumb {
+        background: #dee2e6;
+        border-radius: 4px;
+    }
+
+    /* Modern Tabs */
+    .nav-tabs {
+        border-bottom: none;
+        gap: 0.25rem; /* Weniger Lücke zwischen Tabs */
+        padding-bottom: 0.5rem;
+    }
+    
+    .nav-tabs .nav-link {
+        border: none;
+        border-radius: 50rem !important; /* Pill shape */
+        padding: 0.4rem 0.8rem; /* DEUTLICH kompakter */
+        font-size: 0.9rem; /* Etwas kleinere Schrift */
+        font-weight: 600;
+        color: #6c757d;
+        background-color: transparent;
+        transition: all 0.2s ease;
+        white-space: nowrap; /* Textumbruch verhindern */
+    }
+    
+    .nav-tabs .nav-link:hover {
+        background-color: #e9ecef;
+        color: #495057;
+    }
+    
+    .nav-tabs .nav-link.active {
+        background-color: #0d6efd !important;
+        color: white !important;
+        box-shadow: 0 2px 6px rgba(13, 110, 253, 0.3); /* Etwas dezenterer Schatten */
+    }
+
+    /* Main Content Card */
+    .admin-card {
+        background: var(--card-bg);
+        border: none;
+        border-radius: var(--card-radius);
+        box-shadow: var(--card-shadow);
+        padding: 2rem;
+    }
+    
+    @media (max-width: 768px) {
+        .admin-card {
+            padding: 1rem;
+            border-radius: 12px;
+        }
+    }
+
+    /* Form Controls */
+    .form-control, .form-select {
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        border-color: #dee2e6;
+    }
+    .form-control:focus, .form-select:focus {
+        box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
+        border-color: #86b7fe;
+    }
+
+    /* Tables */
+    .table-hover tbody tr:hover {
+        background-color: rgba(13, 110, 253, 0.02);
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 fw-bold mb-0">Admin Bereich</h1>
+        <small class="text-muted">Verwaltung & Buchungen</small>
+    </div>
+</div>
+
+{% if not current_user_push_active and current_user.player_id %}
+<div class="alert alert-warning">
+    ⚠️ <strong>Keine Push-Benachrichtigungen aktiv!</strong><br>
+    Du erhältst aktuell keine Infos über Anträge/Freigaben.<br>
+    Bitte gehe auf <a href="{{ url_for('player_detail', player_id=current_user.player_id) }}" class="alert-link">dein Profil</a>, scrolle ganz runter und aktiviere die Benachrichtigungen für dieses Gerät.
+</div>
+{% endif %}
+
+{% if next_birthday_info and current_user.role == 'admin' %}
+<div class="alert alert-info">
+    🎈 <strong>Nächster Geburtstag:</strong> 
+    {{ next_birthday_info.names|join(', ') }} am {{ next_birthday_info.date.strftime('%d.%m.') }} 
+    <span class="badge bg-primary">in {{ next_birthday_info.days_left }} 
+        {% if next_birthday_info.days_left == 1 %}Tag{% else %}Tagen{% endif %}
+    </span>
+</div>
+{% endif %}
+
+{% include "_season_selector.html" %}
+
+  <!-- NAVIGATION: Scrollbare Tabs für alle Geräte (Mobile Friendly) -->
+  <div class="overflow-x-auto mb-3 pb-1">
+     <div class="nav nav-tabs flex-nowrap" id="nav-tab" role="tablist">
+      
+      <!-- 1. Log (sichtbar für alle eingeloggten Rollen) -->
+      <button class="nav-link active" id="nav-log-tab" data-bs-toggle="tab" data-bs-target="#nav-log" type="button" role="tab">Log</button>
+
+      <!-- 2. Strafen vergeben (Katalog) -->
+      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-fine-tab" data-bs-toggle="tab" data-bs-target="#nav-fine" type="button" role="tab">Strafe (Katalog)</button>
+      {% endif %}
+
+      <!-- 3. Individuelle Strafe -->
+      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-custom-fine-tab" data-bs-toggle="tab" data-bs-target="#nav-custom-fine" type="button" role="tab">Strafe individuell</button>
+      {% endif %}
+      
+      <!-- 4. Trikotgeld -->
+      {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-game-fee-tab" data-bs-toggle="tab" data-bs-target="#nav-game-fee" type="button" role="tab">Trikotgeld</button>
+      {% endif %}
+
+      <!-- 5. Einzahlung -->
+      {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'] %}
+      <button class="nav-link" id="nav-payment-tab" data-bs-toggle="tab" data-bs-target="#nav-payment" type="button" role="tab">Einzahlung</button>
+      {% endif %}
+
+      <!-- 6. Kistl -->
+      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-kistl-tab" data-bs-toggle="tab" data-bs-target="#nav-kistl" type="button" role="tab">Kistl</button>
+      {% endif %}
+
+      <!-- 7. Auszahlung -->
+      {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-payout-tab" data-bs-toggle="tab" data-bs-target="#nav-payout" type="button" role="tab">Auszahlung</button>
+      {% endif %}
+
+      <!-- 8. Teamausgabe -->
+      {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-expense-tab" data-bs-toggle="tab" data-bs-target="#nav-expense" type="button" role="tab">Teamausgabe</button>
+      {% endif %}
+
+      <!-- 9. Spieler -->
+      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'auditor'] %}
+      <button class="nav-link" id="nav-players-tab" data-bs-toggle="tab" data-bs-target="#nav-players" type="button" role="tab">Spieler</button>
+      {% endif %}
+
+      <!-- 10. Strafenkatalog -->
+      {% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+      <button class="nav-link" id="nav-fines-catalog-tab" data-bs-toggle="tab" data-bs-target="#nav-fines-catalog" type="button" role="tab">Strafenkatalog</button>
+      {% endif %}
+
+      <!-- Setup -->
+      {% if current_user.role in ['admin', 'auditor'] %}
+      <button class="nav-link" id="nav-setup-tab" data-bs-toggle="tab" data-bs-target="#nav-setup" type="button" role="tab">Setup</button>
+      {% endif %}
+      
+      <!-- App-Verwaltung -->
+      {% if current_user.role == 'admin' %}
+      <button class="nav-link" id="nav-app-mgmt-tab" data-bs-toggle="tab" data-bs-target="#nav-app-mgmt" type="button" role="tab">App-Verwaltung</button>
+      {% endif %}
+    </div>
+   </div>
+
+    <div class="tab-content admin-card" id="nav-tabContent">
+      <!-- Transaktions-Log -->
+      <div class="tab-pane fade show active" id="nav-log" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">
+                {% if show_all_logs %}Alle Buchungen{% else %}Letzte Buchungen (max. 150){% endif %}
+            </h5>
+            <div class="d-flex gap-2">
+                 {% if current_user.role in ['admin', 'auditor'] %}
+                 <a href="{{ url_for('audit_log') }}" class="btn btn-outline-dark btn-sm">🔒 Audit Log</a>
+                 {% endif %}
+                {% if not show_all_logs %}
+                <a href="{{ url_for('admin', show_all_logs='1', season=selected_season, **other_query_params) }}" class="btn btn-sm btn-outline-primary">
+                    Alle Einträge laden
+                </a>
+                {% else %}
+                 <a href="{{ url_for('admin', season=selected_season, **other_query_params) }}" class="btn btn-sm btn-outline-secondary">
+                    Weniger anzeigen
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+          <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th>Datum</th>
+                    <th>Beschreibung</th>
+                    <th class="text-end">Betrag</th>
+                    <th>Ersteller</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="transaction-log-body">
+              {% for tx in transaction_log %}
+              <tr id="tx-row-{{ tx.__class__.__name__ }}-{{ tx.id }}">
+                <td>{{ tx.date.strftime('%d.%m.%Y') }}</td>
+                <td>
+                  {{ tx.description }}
+                  {% if tx.player %}<small class="text-muted d-block">{{ tx.player.name }}</small>{% endif %}
+                </td>
+                <td class="text-end">
+                  {% if tx.__class__.__name__ == 'Transaction' %}<span class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">{{ "%.2f €"|format(tx.amount) }}</span>
+                  {% elif tx.__class__.__name__ == 'KistlTransaction' %}<span class="transaction-kistl">{{ tx.amount }} Kistl</span>
+                  {% elif tx.__class__.__name__ == 'TeamExpense' %}<span class="text-danger">-{{ "%.2f €"|format(tx.amount) }}</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">
+                    {{ tx.created_by or '' }}
+                </td>
+                <td>
+                  {% set show_delete = False %}
+                  {% if current_user.role == 'admin' %}
+                      {% set show_delete = True %}
+                  {% else %}
+                      {# Check for Managers #}
+                      {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
+                          {% if tx.team == 'team1' and current_user.role in ['trikot_manager_1', 'strafen_manager_1'] %}
+                              {% if tx.created_at %}
+                                  {% set diff = (now - tx.created_at).total_seconds() %}
+                                  {% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                              {% endif %}
+                          {% endif %}
+                          {% if tx.team == 'team2' and current_user.role in ['trikot_manager_2', 'strafen_manager_2'] %}
+                              {% if tx.created_at %}
+                                  {% set diff = (now - tx.created_at).total_seconds() %}
+                                  {% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                              {% endif %}
+                          {% endif %}
+                      {% endif %}
+                      
+                      {# Check for Self-Deletion (24h) #}
+                      {% if not show_delete and tx.created_by == current_user.username and tx.created_at %}
+                          {% set diff = (now - tx.created_at).total_seconds() %}
+                          {% if diff < 86400 %}
+                              {% set show_delete = True %}
+                          {% endif %}
+                      {% endif %}
+                  {% endif %}
+
+                  {% if show_delete %}
+                  <div class="d-flex justify-content-end gap-1">
+                      <!-- New: Bulk Delete for Game Fees (Negative/Zero Transactions with 'gg.') -->
+                      {% if tx.__class__.__name__ == 'Transaction' and tx.amount <= 0 and 'gg.' in tx.description %}
+                      <form action="{{ url_for('delete_transaction_bulk', tx_id=tx.id) }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" style="font-size: 0.7rem;" class="btn btn-sm btn-danger py-0 px-1" title="Alle identischen Buchungen (z.B. ganzes Spiel) löschen" data-confirm="Soll wirklich das GANZE SPIEL (alle identischen Buchungen) gelöscht werden?">
+                            Alle löschen
+                        </button>
+                      </form>
+                      {% endif %}
+
+                      <!-- VERBESSERT: Formular nutzt jetzt AJAX -->
+                      <form action="{% if tx.__class__.__name__ == 'Transaction' %}{{ url_for('delete_transaction', tx_id=tx.id) }}{% elif tx.__class__.__name__ == 'KistlTransaction' %}{{ url_for('delete_kistl_transaction', tx_id=tx.id) }}{% elif tx.__class__.__name__ == 'TeamExpense' %}{{ url_for('delete_team_expense', tx_id=tx.id) }}{% endif %}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="Diesen Eintrag löschen" data-confirm="Soll dieser Eintrag wirklich gelöscht werden?">X</button>
+                      </form>
+                  </div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr id="no-transactions-row"><td colspan="5" class="text-center">Noch keine Buchungen in dieser Saison vorhanden.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Spielgebühr -->
+      <div class="tab-pane fade" id="nav-game-fee" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          
+          
+          <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">Spielgebühr ({{ settings.get('game_fee', '3.00') }}€) für mehrere Spieler buchen</h5>
+              <button type="button" class="btn btn-sm btn-info" id="refresh-fupa-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                  FuPa-Daten jetzt aktualisieren
+              </button>
+          </div>
+
+          <p class="text-muted small"><strong>Anleitung:</strong> Trage unten Gegner und Datum für beide Mannschaften ein.<br>
+          Wenn ein Team spielfrei hat, aktiviere den Schalter "Spielfrei / Nicht buchen".
+          </p>
+          
+          {% if date_diff_warning %}
+          <div class="alert alert-warning py-2 mb-3">
+              <i class="bi bi-exclamation-triangle-fill"></i> Hinweis: Die Spieltermine der Teams liegen mehr als 2 Tage auseinander. Bitte prüfen, ob ein Team spielfrei hat.
+          </div>
+          {% endif %}
+          
+          <!-- Separate Forms for Reject Actions -->
+          {% if pending_info and pending_info.t1 %}
+          <form id="reject-form-t1" action="{{ url_for('reject_game_fee', request_id=pending_info.t1.id) }}" method="POST" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/></form>
+          {% endif %}
+          {% if pending_info and pending_info.t2 %}
+          <form id="reject-form-t2" action="{{ url_for('reject_game_fee', request_id=pending_info.t2.id) }}" method="POST" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/></form>
+          {% endif %}
+          
+          <form action="{{ url_for('add_game_fee', season=selected_season) }}" method="POST" id="game-fee-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="target_team" value="team2"> <!-- Legacy/Fallback -->
+            
+            <!-- Hidden Reject Forms (outside the main form, but buttons reference them) -->
+            
+            <div class="row g-3 mb-3">
+                <!-- Spalte 1: 1. Mannschaft -->
+                {% set locked_t1 = False %}
+                {% if pending_info and pending_info.t1 and pending_info.t1.created_by == current_user.username and current_user.role != 'admin' %}
+                    {% set locked_t1 = True %}
+                {% endif %}
+                
+                <div class="col-md-6">
+                    <div class="card h-100 border-primary" id="card-team1">
+                        <div class="card-header bg-primary text-white py-1 d-flex justify-content-between align-items-center">
+                            <span>Daten 1. Mannschaft
+                            {% if pending_info and pending_info.t1 %}
+                                {% if locked_t1 %}
+                                    <span class="badge bg-light text-primary ms-2">Wartet auf Prüfung (Ihre Eingabe)</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark ms-2">Wartet auf Ihre Freigabe</span>
+                                {% endif %}
+                            {% endif %}
+                            </span>
+                            <div class="d-flex align-items-center">
+                                <div class="form-check form-switch me-2 mb-0">
+                                  <input class="form-check-input" type="checkbox" name="spielfrei_team1" value="1" id="spielfrei_team1" onchange="toggleTeam('team1')" {% if locked_t1 %}disabled{% endif %}>
+                                  <label class="form-check-label text-white small" for="spielfrei_team1" style="cursor:pointer; user-select:none;">Spielfrei</label>
+                                </div>
+                                {% if pending_info and pending_info.t1 %}
+                                    <button type="submit" form="reject-form-t1" class="btn btn-sm btn-danger py-0 px-2" style="font-size: 0.8em;" onclick="return confirm('Antrag wirklich zurückziehen/löschen?')" title="Antrag zurückziehen">X</button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-body p-2" id="body-team1" {% if locked_t1 %}style="opacity: 0.6; pointer-events: none;"{% endif %}>
+                             <div class="mb-2">
+                                <label class="form-label small mb-0">Spieltag-Datum</label>
+                                <input type="date" name="date_team1" id="input_date_team1" class="form-control form-control-sm" value="{{ latest_game_date_team1 or today.strftime('%Y-%m-%d') }}" {% if locked_t1 %}disabled{% endif %}>
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label small mb-0">Gegner (1. M.)</label>
+                                <input type="text" name="opponent_team1" id="input_opp_team1" class="form-control form-control-sm" value="{{ latest_game_opponent_team1 or '' }}" placeholder="z.B. SV Donaustauf II" {% if locked_t1 %}disabled{% endif %}>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Spalte 2: 2. Mannschaft -->
+                {% set locked_t2 = False %}
+                {% if pending_info and pending_info.t2 and pending_info.t2.created_by == current_user.username and current_user.role != 'admin' %}
+                    {% set locked_t2 = True %}
+                {% endif %}
+
+                <div class="col-md-6">
+                    <div class="card h-100 border-secondary" id="card-team2">
+                        <div class="card-header bg-secondary text-white py-1 d-flex justify-content-between align-items-center">
+                            <span>Daten 2. Mannschaft
+                            {% if pending_info and pending_info.t2 %}
+                                {% if locked_t2 %}
+                                    <span class="badge bg-light text-secondary ms-2">Wartet auf Prüfung (Ihre Eingabe)</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark ms-2">Wartet auf Ihre Freigabe</span>
+                                {% endif %}
+                            {% endif %}
+                            </span>
+                            <div class="d-flex align-items-center">
+                                <div class="form-check form-switch me-2 mb-0">
+                                  <input class="form-check-input" type="checkbox" name="spielfrei_team2" value="1" id="spielfrei_team2" onchange="toggleTeam('team2')" {% if locked_t2 %}disabled{% endif %}>
+                                  <label class="form-check-label text-white small" for="spielfrei_team2" style="cursor:pointer; user-select:none;">Spielfrei</label>
+                                </div>
+                                {% if pending_info and pending_info.t2 %}
+                                    <button type="submit" form="reject-form-t2" class="btn btn-sm btn-danger py-0 px-2" style="font-size: 0.8em;" onclick="return confirm('Antrag wirklich zurückziehen/löschen?')" title="Antrag zurückziehen">X</button>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-body p-2" id="body-team2" {% if locked_t2 %}style="opacity: 0.6; pointer-events: none;"{% endif %}>
+                            <div class="mb-2">
+                                <label class="form-label small mb-0">Spieltag-Datum</label>
+                                <input type="date" name="date_team2" id="input_date_team2" class="form-control form-control-sm" value="{{ latest_game_date or today.strftime('%Y-%m-%d') }}" {% if locked_t2 %}disabled{% endif %}>
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label small mb-0">Gegner (2. M.)</label>
+                                <input type="text" name="opponent_team2" id="input_opp_team2" class="form-control form-control-sm" value="{{ latest_game_opponent or '' }}" placeholder="z.B. SV Obertraubling">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+              <table class="table table-sm table-hover">
+                <thead class="table-light" style="position: sticky; top: 0;">
+                  <tr>
+                    <th>Name <small>(Saisonspiele)</small></th>
+                    <th class="text-center">1. M.</th>
+                    <th class="text-center">2. M.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for data in players_for_game_fee %}
+                  {% set player_fupa_info = fupa_game_data.get(data.player.id, {}) %}
+                  <tr>
+                    <td>
+                      <label class="form-check-label w-100 py-2" for="t2_player_{{ data.player.id }}" {% if locked_t1 and locked_t2 %}style="cursor:not-allowed; opacity: 0.6;"{% endif %}>
+                        {{ data.player.name }}
+                        <span class="badge bg-secondary">{{ data.game_count }}</span>
+                      </label>
+                    </td>
+                    <td class="text-center align-middle">
+                      <!-- Tristate Inputs Team 1 -->
+                      <input type="checkbox" name="team1_player_ids" value="{{ data.player.id }}" id="t1_paid_{{ data.player.id }}" style="display:none;" {% if player_fupa_info.get('is_team1') %}checked{% endif %}>
+                      <input type="checkbox" name="team1_free_ids" value="{{ data.player.id }}" id="t1_free_{{ data.player.id }}" style="display:none;" {% if player_fupa_info.get('is_team1_free') %}checked{% endif %}>
+                      
+                      <button type="button" class="btn btn-sm p-0 d-flex justify-content-center align-items-center mx-auto tristate-btn" 
+                              style="width: 2em; height: 2em; border-radius: 50%; border: 1px solid #ced4da;"
+                              onclick="cycleState('team1', {{ data.player.id }})"
+                              id="btn_team1_{{ data.player.id }}"
+                              data-team="team1" data-id="{{ data.player.id }}"
+                              {% if locked_t1 %}disabled{% endif %}>
+                      </button>
+                      
+                        {% if pending_info and pending_info.t1 %}
+                            {% if player_fupa_info.get('is_team1') %}
+                                {% if player_fupa_info.get('has_history_t1') %}
+                                     {% if player_fupa_info.get('prev_is_team1') %}
+                                        <span class="badge bg-success d-block mt-1" style="font-size: 0.6em;">Bestätigt</span>
+                                     {% else %}
+                                        <span class="badge bg-warning text-dark d-block mt-1" style="font-size: 0.6em;">Geändert</span>
+                                     {% endif %}
+                                {% else %}
+                                     <span class="badge bg-warning text-dark d-block mt-1" style="font-size: 0.6em;">Antrag</span>
+                                {% endif %}
+                            {% else %}
+                                {% if player_fupa_info.get('prev_is_team1') %}
+                                    <span class="d-block mt-1 text-danger fw-bold" style="font-size: 0.6em;">Geändert</span>
+                                {% endif %}
+                            {% endif %}
+                        {% elif player_fupa_info.get('is_team1') %}
+                            <span class="badge bg-info text-dark d-block mt-1" style="font-size: 0.6em;">FuPa</span>
+                        {% endif %}
+                      
+                    </td>
+                    <td class="text-center align-middle">
+                      <!-- Tristate Inputs Team 2 -->
+                      <input type="checkbox" name="team2_player_ids" value="{{ data.player.id }}" id="t2_paid_{{ data.player.id }}" style="display:none;" {% if player_fupa_info.get('checked') %}checked{% endif %}>
+                      <input type="checkbox" name="team2_free_ids" value="{{ data.player.id }}" id="t2_free_{{ data.player.id }}" style="display:none;" {% if player_fupa_info.get('checked_free') %}checked{% endif %}>
+                      
+                      <button type="button" class="btn btn-sm p-0 d-flex justify-content-center align-items-center mx-auto tristate-btn" 
+                              style="width: 2em; height: 2em; border-radius: 50%; border: 1px solid #ced4da;"
+                              onclick="cycleState('team2', {{ data.player.id }})"
+                              id="btn_team2_{{ data.player.id }}"
+                              data-team="team2" data-id="{{ data.player.id }}"
+                              {% if locked_t2 %}disabled{% endif %}>
+                      </button>
+                      
+                        {% if pending_info and pending_info.t2 %}
+                            {% if player_fupa_info.get('checked') %}
+                                {% if player_fupa_info.get('has_history_t2') %}
+                                     {% if player_fupa_info.get('prev_checked') %}
+                                        <span class="badge bg-success d-block mt-1" style="font-size: 0.6em;">Bestätigt</span>
+                                     {% else %}
+                                        <span class="badge bg-warning text-dark d-block mt-1" style="font-size: 0.6em;">Geändert</span>
+                                     {% endif %}
+                                {% else %}
+                                     <span class="badge bg-warning text-dark d-block mt-1" style="font-size: 0.6em;">Antrag</span>
+                                {% endif %}
+                            {% else %}
+                                {% if player_fupa_info.get('prev_checked') %}
+                                    <span class="d-block mt-1 text-danger fw-bold" style="font-size: 0.6em;">Geändert</span>
+                                {% endif %}
+                            {% endif %}
+                        {% elif player_fupa_info.get('checked') %}
+                             <span class="badge bg-info text-dark d-block mt-1" style="font-size: 0.6em;">FuPa</span>
+                        {% endif %}
+                      
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- JavaScript for Spielfrei Toggle & Tri-State Logic -->
+            <script>
+            // Global counter function to supersede admin.js logic
+            window.updateGameFeeCounts = function() {
+                const t1Paid = document.querySelectorAll('input[name="team1_player_ids"]:checked').length;
+                const t2Paid = document.querySelectorAll('input[name="team2_player_ids"]:checked').length;
+                
+                const t1Free = document.querySelectorAll('input[name="team1_free_ids"]:checked').length;
+                const t2Free = document.querySelectorAll('input[name="team2_free_ids"]:checked').length;
+                
+                const badge1 = document.getElementById('count-team1');
+                const badge2 = document.getElementById('count-team2');
+                
+                if (badge1) badge1.textContent = `Team 1: ${t1Paid + t1Free} (davon ${t1Free} frei)`;
+                if (badge2) badge2.textContent = `Team 2: ${t2Paid + t2Free} (davon ${t2Free} frei)`;
+            };
+
+            function toggleTeam(team) {
+                var isChecked = document.getElementById('spielfrei_' + team).checked;
+                var cardBody = document.getElementById('body-' + team);
+                var inputDate = document.getElementById('input_date_' + team);
+                var inputOpp = document.getElementById('input_opp_' + team);
+                
+                // Toggle Visuals (Opacity)
+                if (isChecked) {
+                    cardBody.style.opacity = '0.4';
+                    cardBody.style.pointerEvents = 'none'; // Prevent clicks
+                    inputDate.disabled = true;
+                    inputOpp.disabled = true;
+                } else {
+                    cardBody.style.opacity = '1.0';
+                    cardBody.style.pointerEvents = 'auto';
+                    inputDate.disabled = false;
+                    inputOpp.disabled = false;
+                }
+                
+                // Toggle Player Buttons/Checkboxes
+                if (isChecked) {
+                    // Disable and Uncheck all
+                     var inputs = document.querySelectorAll('input[name^="' + team + '_"]');
+                    inputs.forEach(function(inp) {
+                         inp.checked = false;
+                         inp.disabled = true;
+                    });
+                    
+                    var buttons = document.querySelectorAll('button[id^="btn_' + team + '_"]');
+                    buttons.forEach(function(btn) {
+                        btn.className = "btn btn-sm p-0 d-flex justify-content-center align-items-center mx-auto tristate-btn btn-outline-secondary";
+                        btn.innerHTML = "";
+                        btn.disabled = true;
+                    });
+                } else {
+                    // Re-enable
+                    var inputs = document.querySelectorAll('input[name^="' + team + '_"]');
+                    inputs.forEach(function(inp) {
+                         inp.disabled = false;
+                    });
+                     // Re-enable buttons
+                    var buttons = document.querySelectorAll('button[id^="btn_' + team + '_"]');
+                    buttons.forEach(function(btn) {
+                        btn.disabled = false;
+                        // Restore visual state based on hidden input? 
+                        // Actually inputs are still unchecked from above if we just toggled off/on?
+                        // If they were unchecked by "Spielfrei=True", good.
+                        // If we untoggle Spielfrei, they remain unchecked (clean state).
+                        // If we want to restore old state, we'd need to save it. 
+                        // Current logic: Spielfrei clears everything. Un-Spielfrei starts empty. Acceptable.
+                    });
+                }
+                window.updateGameFeeCounts();
+            }
+
+            // --- Tri-State Logic ---
+            function teamToPrefix(team) {
+                return team === 'team1' ? 't1_' : 't2_';
+            }
+
+            function updateButtonVisuals(team, playerId) {
+                var btn = document.getElementById('btn_' + team + '_' + playerId);
+                var prefix = teamToPrefix(team);
+                var paid = document.getElementById(prefix + 'paid_' + playerId).checked;
+                var free = document.getElementById(prefix + 'free_' + playerId).checked;
+                
+                // Reset classes
+                btn.className = "btn btn-sm p-0 d-flex justify-content-center align-items-center mx-auto tristate-btn";
+                btn.innerHTML = "";
+                
+                if (paid) {
+                    // State: Paid (Green Check)
+                    btn.classList.add('btn-success');
+                    btn.innerHTML = '<i class="bi bi-check-lg text-white" style="font-size: 1.2em;"></i>';
+                } else if (free) {
+                    // State: Free (Yellow/Info 0€)
+                    btn.classList.add('btn-warning');
+                    btn.innerHTML = '<span class="fw-bold small text-dark">0€</span>';
+                } else {
+                    // State: Empty
+                    btn.classList.add('btn-outline-secondary');
+                }
+            }
+
+            function cycleState(team, playerId) {
+                var prefix = teamToPrefix(team);
+                var paidCb = document.getElementById(prefix + 'paid_' + playerId);
+                var freeCb = document.getElementById(prefix + 'free_' + playerId);
+                
+                if (!paidCb.checked && !freeCb.checked) {
+                    // Empty -> Paid
+                    paidCb.checked = true;
+                    freeCb.checked = false;
+                } else if (paidCb.checked) {
+                    // Paid -> Free
+                    paidCb.checked = false;
+                    freeCb.checked = true;
+                } else {
+                    // Free -> Empty
+                    paidCb.checked = false;
+                    freeCb.checked = false;
+                }
+                updateButtonVisuals(team, playerId);
+                window.updateGameFeeCounts();
+            }
+            
+            // Initialization on Load
+            document.addEventListener("DOMContentLoaded", function() {
+                var buttons = document.querySelectorAll('.tristate-btn');
+                buttons.forEach(function(btn) {
+                    var team = btn.getAttribute('data-team');
+                    var id = btn.getAttribute('data-id');
+                    if (team && id) {
+                        updateButtonVisuals(team, id);
+                    }
+                });
+                // Initial Count
+                window.updateGameFeeCounts();
+                
+                // Ensure Spielfrei UI is correct on load (e.g. if loaded from validation error)
+                if(document.getElementById('spielfrei_team1').checked) toggleTeam('team1');
+                if(document.getElementById('spielfrei_team2').checked) toggleTeam('team2');
+            });
+            </script>
+            
+            <!-- HIER ÄNDERN: Dem <button> Tag eine ID hinzufügen -->
+            <button type="submit" class="btn btn-primary mt-3" id="submit-game-fee-btn">Spielgebühren buchen</button>
+            <span id="count-team1" class="badge bg-secondary ms-2 mt-3">Team 1: 0</span>
+            <span id="count-team2" class="badge bg-secondary ms-1 mt-3">Team 2: 0</span>
+
+          </form>
+
+        </fieldset>
+      </div>
+
+      <!-- Strafe (Katalog) -->
+            <div class="tab-pane fade" id="nav-fine" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Strafe aus Katalog zuweisen (Saison {{ selected_season }})</h5>
+          <form action="{{ url_for('add_transaction') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="mb-3">
+                <label for="fine_date" class="form-label">Datum</label>
+                <input type="date" id="fine_date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Für Mannschaft</label>
+                <select name="team" class="form-select" id="fine_team_select" required>
+                    {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}
+                    <option value="team2" selected>Zweite Mannschaft</option>
+                    {% endif %}
+                    {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}
+                    <option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                    {% endif %}
+                </select>
+              </div>
+              <div class="mb-3"><label class="form-label">Aktiver Spieler</label><select name="player_id" class="form-select" required><option value="" disabled selected>Bitte wählen...</option>{% for player in active_players %}<option value="{{ player.id }}">{{ player.name }}</option>{% endfor %}</select></div>
+              <div class="mb-3">
+                  <label class="form-label">Strafe</label>
+                  <select name="fine_id" id="fine_catalog_select" class="form-select" required>
+                      <option value="" disabled selected>Bitte wählen...</option>
+                      
+                      <optgroup label="Spiel">
+                        {% for fine in fines if fine.category == 'game' %}
+                            <option value="{{ fine.id }}" data-team="{{ fine.team or '' }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>
+                        {% endfor %}
+                      </optgroup>
+                      
+                      <optgroup label="Training">
+                        {% for fine in fines if fine.category == 'training' %}
+                            <option value="{{ fine.id }}" data-team="{{ fine.team or '' }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>
+                        {% endfor %}
+                      </optgroup>
+
+                      <optgroup label="Allgemeines">
+                        {% for fine in fines if fine.category == 'general' or not fine.category %}
+                            <option value="{{ fine.id }}" data-team="{{ fine.team or '' }}">{{ fine.description }} ({{ fine.amount|int if fine.type == 'kistl' else "%.2f €"|format(fine.amount) }})</option>
+                        {% endfor %}
+                      </optgroup>
+
+                  </select>
+              </div>
+              
+              <div class="mb-3" id="fine_multiplier_div" style="display:none;">
+                  <label class="form-label">Anzahl (Multiplikator)</label>
+                  <input type="number" name="multiplier" id="fine_multiplier" class="form-control" value="1" min="1" step="1">
+                  <div class="form-text text-muted">Die Strafe enthält "pro", daher können Sie hier die Anzahl eingeben.</div>
+              </div>
+
+              <button type="submit" class="btn btn-danger">Strafe aus Katalog buchen</button>
+          </form>
+          
+          <script>
+            document.getElementById('fine_catalog_select').addEventListener('change', function() {
+                var text = this.options[this.selectedIndex].text.toLowerCase();
+                var div = document.getElementById('fine_multiplier_div');
+                var input = document.getElementById('fine_multiplier');
+                
+                if (text.includes(' pro ')) {
+                    div.style.display = 'block';
+                    input.required = true;
+                } else {
+                    div.style.display = 'none';
+                    input.required = false;
+                    input.value = "1";
+                }
+            });
+          </script>
+        </fieldset>
+      </div>
+      
+      <!-- Individuelle Strafe -->
+      <div class="tab-pane fade" id="nav-custom-fine" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Individuelle Strafe vergeben</h5>
+          <form action="{{ url_for('add_custom_fine') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="mb-3">
+                <label for="custom_fine_date" class="form-label">Datum</label>
+                <input type="date" id="custom_fine_date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Für Mannschaft</label>
+                <select name="team" class="form-select" required>
+                    {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}
+                    <option value="team2" selected>Zweite Mannschaft</option>
+                    {% endif %}
+                    {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}
+                    <option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                    {% endif %}
+                </select>
+              </div>
+              <div class="mb-3">
+                  <label for="custom_fine_player" class="form-label">Aktiver Spieler</label>
+                  <select name="player_id" id="custom_fine_player" class="form-select" required>
+                      <option value="" disabled selected>Bitte wählen...</option>
+                      {% for player in active_players %}
+                      <option value="{{ player.id }}">{{ player.name }}</option>
+                      {% endfor %}
+                  </select>
+              </div>
+              <div class="mb-3">
+                  <label for="custom_fine_desc" class="form-label">Beschreibung der Strafe</label>
+                  <input type="text" name="description" id="custom_fine_desc" class="form-control" placeholder="z.B. Unsportlichkeit, Material beschädigt" required>
+              </div>
+              <div class="row">
+                  <div class="col-md-8">
+                      <label for="custom_fine_amount" class="form-label">Betrag / Anzahl</label>
+                      <input type="number" step="any" name="amount" id="custom_fine_amount" class="form-control" required>
+                  </div>
+                  <div class="col-md-4">
+                      <label for="custom_fine_type" class="form-label">Typ</label>
+                      <select name="type" id="custom_fine_type" class="form-select" required>
+                          <option value="money">€</option>
+                          <option value="kistl">Kistl</option>
+                      </select>
+                  </div>
+              </div>
+              <button type="submit" class="btn btn-danger mt-3">Individuelle Strafe buchen</button>
+          </form>
+        </fieldset>
+      </div>
+
+      <!-- Einzahlung -->
+      <div class="tab-pane fade" id="nav-payment" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Einzahlung verbuchen</h5>
+          <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="mb-3">
+                <label for="payment_date" class="form-label">Datum</label>
+                <input type="date" id="payment_date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Für Mannschaft</label>
+                <select name="team" class="form-select" id="payment_team_select" required>
+                    {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2'] %}
+                    <option value="team2" selected>Zweite Mannschaft</option>
+                    {% endif %}
+                    {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1'] %}
+                    <option value="team1" {% if current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                    {% endif %}
+                </select>
+              </div>
+              <div class="mb-3">
+                  <label class="form-label">Aktiver Spieler</label>
+                  <select name="player_id" class="form-select" id="payment_player_select" required>
+                      <option value="" disabled selected>Bitte wählen...</option>
+                      {% for player in active_players %}
+                      <option value="{{ player.id }}" 
+                              data-balance-team1="{{ player.balance_team1 }}" 
+                              data-balance-team2="{{ player.balance_team2 }}">
+                              {{ player.name }}
+                      </option>
+                      {% endfor %}
+                  </select>
+              </div>
+              <div class="mb-3">
+                  <label class="form-label">Verwendungszweck</label>
+                  <select name="payment_category" class="form-select">
+                      <option value="standard" selected>Standard (Haupteinzahlung: Verrechnet offene Geldstrafen)</option>
+                      <option value="game_fee">Trikotgeld (Separat: Begleicht nur offene Trikotgelder)</option>
+                  </select>
+                  <div class="form-text small">
+                      <strong>Standard:</strong> Im Normalfall immer verwenden. Begleicht automatisch offene Geldstrafen (z.B. Zuspätkommen), beginnend mit der ältesten.<br>
+                      <strong>Trikotgeld:</strong> Nur nutzen, wenn Strafen separat (z.B. bar in der Versammlung) eingesammelt werden. Diese Funktion <u>löscht bestehende Strafen NICHT</u> und setzt keine Fristen zurück.
+                  </div>
+              </div>
+              <div class="mb-3"><label class="form-label">Betrag (€)</label><input type="number" step="0.01" name="amount" class="form-control" required inputmode="decimal"></div>
+              <button type="submit" class="btn btn-success">Einzahlung verbuchen</button>
+          </form>
+        </fieldset>
+      </div>
+
+      <!-- Auszahlung -->
+      <div class="tab-pane fade" id="nav-payout" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Guthaben auszahlen</h5>
+          <form action="{{ url_for('add_payout') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="mb-3">
+                <label for="payout_date" class="form-label">Datum</label>
+                <input type="date" id="payout_date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Für Mannschaft</label>
+                <select name="team" class="form-select" required>
+                    {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2'] %}
+                    <option value="team2" selected>Zweite Mannschaft</option>
+                    {% endif %}
+                    {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1'] %}
+                    <option value="team1" {% if current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                    {% endif %}
+                </select>
+              </div>
+              <div class="mb-3"><label class="form-label">Aktiver Spieler</label><select name="player_id" class="form-select" required><option value="" disabled selected>Bitte wählen...</option>{% for player in active_players %}<option value="{{ player.id }}">{{ player.name }} (M1: {{ "%.2f"|format(player.balance_team1) }}€ / M2: {{ "%.2f"|format(player.balance_team2) }}€)</option>{% endfor %}</select></div>
+              <div class="mb-3"><label class="form-label">Betrag (€)</label><input type="number" step="0.01" name="amount" class="form-control" required inputmode="decimal"></div>
+              <button type="submit" class="btn btn-warning">Auszahlung verbuchen</button>
+          </form>
+        </fieldset>
+      </div>
+
+      <!-- Teamausgabe -->
+      <div class="tab-pane fade" id="nav-expense" role="tabpanel">
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Teamausgabe hinzufügen</h5>
+          <form action="{{ url_for('add_team_expense') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="mb-3">
+                <label for="expense_date" class="form-label">Datum</label>
+                <input type="date" id="expense_date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Für Mannschaft</label>
+                <select name="team" class="form-select" required>
+                    {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2'] %}
+                    <option value="team2" selected>Zweite Mannschaft</option>
+                    {% endif %}
+                    {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1'] %}
+                    <option value="team1" {% if current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                    {% endif %}
+                </select>
+              </div>
+              <div class="mb-3"><label class="form-label">Beschreibung (z.B. "Grillfleisch Saisonabschluss")</label><input type="text" name="description" class="form-control" required></div>
+              <div class="mb-3"><label class="form-label">Betrag (€)</label><input type="number" step="0.01" name="amount" class="form-control" required inputmode="decimal"></div>
+              <button type="submit" class="btn btn-warning">Ausgabe buchen</button>
+          </form>
+        </fieldset>
+      </div>
+
+      <!-- Kistl verwalten -->
+      <div class="tab-pane fade" id="nav-kistl" role="tabpanel">
+        <h5>Offene Kistl (Aktive Spieler) - Gesamt</h5>
+        <ul class="list-group" id="kistl-debtors-list">
+            {% for player in kistl_debtors %}
+            <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap" id="kistl-item-{{ player.id }}">
+                <span class="mb-2 mb-md-0">{{ player.name }} ({{ player.kistl_balance * -1 }} Kistl offen)</span>
+                <form action="{{ url_for('settle_kistl', player_id=player.id) }}" method="POST" class="d-flex gap-2 align-items-center ms-md-auto ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="date" name="date" class="form-control form-control-sm" value="{{ today.strftime('%Y-%m-%d') }}" required {% if current_user.role == 'auditor' %}disabled{% endif %}>
+                    <button class="btn btn-sm btn-success" type="submit" {% if current_user.role == 'auditor' %}disabled{% endif %}>1 Kistl begleichen</button>
+                </form>
+            </li>
+            {% endfor %}
+             {% if not kistl_debtors %}
+                <li class="list-group-item text-muted" id="no-kistl-debtors">Aktuell sind alle Kistl bezahlt. Prost!</li>
+            {% endif %}
+        </ul>
+      </div>
+
+      <!-- Spieler verwalten -->
+      <div class="tab-pane fade" id="nav-players" role="tabpanel">
+        <fieldset {% if current_user.role not in ['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'] %}disabled{% endif %}>
+          <div class="bg-light p-3 rounded-3 border mb-4">
+              <h6 class="fw-bold mb-3">Neuen Spieler hinzufügen</h6>
+              <form action="{{ url_for('add_player') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <div class="input-group">
+                      <span class="input-group-text bg-white"><i class="bi bi-person-plus"></i></span>
+                      <input type="text" class="form-control" name="player_name" placeholder="Vorname Nachname" required>
+                      <button class="btn btn-primary" type="submit">Hinzufügen</button>
+                  </div>
+              </form>
+          </div>
+          
+          <h6 class="fw-bold mb-3">Aktive Spieler verwalten</h6>
+          <div class="list-group mb-4 shadow-sm" id="active-players-list">
+              {% for player in active_players %}
+                {% with player=player, show_magic_link=True %}{% include "_player_item.html" %}{% endwith %}
+              {% endfor %}
+          </div>
+          
+          <h6 class="fw-bold mb-3">Spieler im Archiv (Inaktiv)</h6>
+          <div class="list-group shadow-sm" id="inactive-players-list">
+              {% for player in inactive_players %}
+                {% with player=player, show_magic_link=True %}{% include "_player_item.html" %}{% endwith %}
+              {% endfor %}
+              {% if not inactive_players %}
+                <div class="list-group-item text-muted" id="no-inactive-players">Keine Spieler im Archiv.</div>
+              {% endif %}
+          </div>
+        </fieldset>
+      </div>
+
+      <!-- Strafenkatalog verwalten -->
+      <div class="tab-pane fade" id="nav-fines-catalog" role="tabpanel">
+        <fieldset {% if current_user.role not in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}disabled{% endif %}>
+          <div class="bg-light p-3 rounded-3 border mb-4">
+              <h6 class="fw-bold mb-3">Neue Strafe hinzufügen</h6>
+              <form action="{{ url_for('add_fine') }}" method="POST" class="ajax-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <div class="row g-2">
+                      <div class="col-md-3">
+                        <select name="team" class="form-select" required>
+                            {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}
+                            <option value="team2" {% if current_user.role != 'strafen_manager_1' and current_user.role != 'trikot_manager_1' %}selected{% endif %}>Zweite Mannschaft</option>
+                            {% endif %}
+                            {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}
+                            <option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>
+                            {% endif %}
+                        </select>
+                      </div>
+                      <div class="col-md-3">
+                          <select name="category" class="form-select" required>
+                              <option value="general" selected>Allgemeines</option>
+                              <option value="game">Spiel</option>
+                              <option value="training">Training</option>
+                          </select>
+                      </div>
+                      <div class="col-md-3"><input type="text" class="form-control" name="description" placeholder="Beschreibung (z.B. Trikot vergessen)" required></div>
+                      <div class="col-md-1"><input type="number" step="any" class="form-control" name="amount" placeholder="Betrag" required></div>
+                      <div class="col-md-2">
+                          <select name="type" class="form-select" required>
+                              <option value="money">€</option>
+                              <option value="kistl">Kistl</option>
+                          </select>
+                      </div>
+                      <div class="col-md-12"><button type="submit" class="btn btn-primary w-100">Hinzufügen</button></div>
+                  </div>
+              </form>
+          </div>
+          
+          <h6 class="fw-bold mb-2">Existierende Strafen (1. Mannschaft)</h6>
+          <ul class="list-group mb-4 shadow-sm" id="fines-catalog-list-team1">
+              {% for fine in fines_team1 %}
+                {% with fine=fine %}{% include "_fine_item.html" %}{% endwith %}
+              {% endfor %}
+              {% if not fines_team1 %}
+                <li class="list-group-item text-muted">Keine Strafen für Team 1 definiert.</li>
+              {% endif %}
+          </ul>
+
+          <h6 class="fw-bold mb-2">Existierende Strafen (2. Mannschaft)</h6>
+          <ul class="list-group shadow-sm" id="fines-catalog-list-team2">
+              {% for fine in fines_team2 %}
+                {% with fine=fine %}{% include "_fine_item.html" %}{% endwith %}
+              {% endfor %}
+              {% if not fines_team2 %}
+                <li class="list-group-item text-muted">Keine Strafen für Team 2 definiert.</li>
+              {% endif %}
+          </ul>
+        </fieldset>
+      </div>
+        
+      <!-- Setup -->
+      <div class="tab-pane fade" id="nav-setup" role="tabpanel">
+
+        <div class="bg-light p-4 rounded-3 border border-warning mb-4 position-relative">
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark border border-light">
+                Archivierung
+            </span>
+            <h5 class="fw-bold"><i class="bi bi-file-earmark-pdf text-danger"></i> Saisonbericht</h5>
+            <p class="text-secondary mb-2">
+                Erstelle hier einen PDF-Bericht über die aktuelle Saison für die Archivierung.
+            </p>
+            <div class="alert alert-info py-2 mb-3 small border-0 bg-white">
+                <strong>Tipp:</strong> Erstelle den Bericht, bevor du Spieler für die neue Saison archivierst/deaktivierst, damit diese noch im Abschlussbericht aufgeführt werden.
+            </div>
+            <a href="{{ url_for('generate_season_report') }}" class="btn btn-warning shadow-sm">
+                <i class="bi bi-download me-1"></i> Saisonbericht herunterladen
+            </a>
+        </div>
+        
+        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+          <h5>Einmalige Einrichtung / Korrektur der Startwerte</h5>
+          <p class="text-muted">Setze hier die Startwerte aus deiner alten Excel-Liste. Positive Werte sind Guthaben, negative Werte sind Schulden. Du kannst einzelne Werte jederzeit ändern und erneut speichern.</p>
+          <form action="{{ url_for('setup_balances') }}" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <div class="row mb-3">
+                  <div class="col-md-6">
+                      <label for="team_balance_team1" class="form-label"><strong>Kassenstand Start - Erste Mannschaft</strong></label>
+                      <div class="input-group">
+                          <input type="number" step="0.01" class="form-control" name="team_balance_team1" id="team_balance_team1" placeholder="z.B. 500.00" value="{{ start_balance_team1 }}">
+                          <span class="input-group-text">€</span>
+                      </div>
+                  </div>
+                  <div class="col-md-6">
+                      <label for="team_balance_team2" class="form-label"><strong>Kassenstand Start - Zweite Mannschaft</strong></label>
+                      <div class="input-group">
+                          <input type="number" step="0.01" class="form-control" name="team_balance_team2" id="team_balance_team2" placeholder="z.B. 1318.00" value="{{ start_balance_team2 or start_balance }}">
+                          <span class="input-group-text">€</span>
+                      </div>
+                  </div>
+              </div>
+              <hr>
+              <h6>Spieler-Salden am Starttag</h6>
+              <div class="row g-3">
+              {% for player in active_players %}
+                  <div class="col-12">
+                      <div class="row align-items-center">
+                        <div class="col-md-3">
+                            <span class="fw-bold">{{ player.name }}</span>
+                        </div>
+                        <div class="col-md-4">
+                              <div class="input-group input-group-sm">
+                                  <span class="input-group-text">Team 1</span>
+                                  {% set start_tx_t1 = player.transactions.filter_by(description='Startguthaben', team='team1').first() %}
+                                  <input type="number" step="0.01" class="form-control" name="player_{{ player.id }}_team1" placeholder="Saldo" value="{{ start_tx_t1.amount if start_tx_t1 else '' }}">
+                                  <span class="input-group-text">€</span>
+                              </div>
+                        </div>
+                        <div class="col-md-4">
+                              <div class="input-group input-group-sm">
+                                  <span class="input-group-text">Team 2</span>
+                                  {% set start_tx_t2 = player.transactions.filter_by(description='Startguthaben', team='team2').first() %}
+                                  {# Fallback to untyped Startguthaben if team2 specific is missing #}
+                                  {% if not start_tx_t2 %}
+                                     {% set start_tx_t2 = player.transactions.filter_by(description='Startguthaben', team=None).first() %}
+                                     {% if not start_tx_t2 %}{% set start_tx_t2 = player.transactions.filter_by(description='Startguthaben').first() %}{% endif %}
+                                     {% if start_tx_t2 and start_tx_t2.team == 'team1' %}{% set start_tx_t2 = None %}{% endif %}
+                                  {% endif %}
+                                  
+                                  <input type="number" step="0.01" class="form-control" name="player_{{ player.id }}_team2" placeholder="Saldo" value="{{ start_tx_t2.amount if start_tx_t2 else '' }}">
+                                  <span class="input-group-text">€</span>
+                              </div>
+                        </div>
+                      </div>
+                  </div>
+              {% endfor %}
+              </div>
+              <button type="submit" class="btn btn-warning mt-4">Startwerte speichern</button>
+          </form>
+        </fieldset>
+      </div>
+
+
+      <!-- App-Verwaltung -->
+      {% if current_user.role == 'admin' %}
+
+      <div class="tab-pane fade" id="nav-app-mgmt" role="tabpanel">
+        <h4>App-Verwaltung</h4>
+        <hr>
+        
+        <h5>Benutzer verwalten</h5>
+        <form action="{{ url_for('add_user') }}" method="POST" class="bg-light p-3 rounded-3 border mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <h6 class="fw-bold mb-3">Neuen Benutzer anlegen</h6>
+            <div class="alert alert-info py-2"><small>Ein Benutzeraccount wird direkt mit einem Spieler aus der Liste verknüpft. Der Benutzername entspricht dem Spielernamen.</small></div>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <select name="player_id" class="form-select" required>
+                        <option value="" disabled selected>-- Spieler wählen --</option>
+                        <optgroup label="Aktive Spieler">
+                            {% for p in active_players %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Inaktive Spieler">
+                                {% for p in inactive_players %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-md-4"><input type="password" name="password" class="form-control" placeholder="Initiales Passwort" required></div>
+                <div class="col-md-2">
+                    <select name="role" class="form-select" required>
+                        {% for role in valid_roles %}<option value="{{ role }}">{{ role.replace('_', ' ')|title }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2"><button type="submit" class="btn btn-success w-100">Anlegen</button></div>
+            </div>
+        </form>
+        
+        <h6>Bestehende Benutzer</h6>
+        <ul class="list-group mb-4">
+            {% for user in users %}
+            <li class="list-group-item">
+                <form action="{{ url_for('edit_user', user_id=user.id) }}" method="POST" class="row g-2 align-items-center">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="col-md-2"><strong>{{ user.username }}</strong></div>
+                    <div class="col-md-2">
+                         <label class="form-label small text-muted mb-0">Rolle</label>
+                         <select name="role" class="form-select form-select-sm">
+                            {% for role in valid_roles %}<option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role.replace('_', ' ')|title }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                         <label class="form-label small text-muted mb-0">Quick-Switch</label>
+                         <select name="secondary_role" class="form-select form-select-sm" title="Schnellzugriff-Rolle">
+                            <option value="none" {% if not user.secondary_role %}selected{% endif %}>- Keine -</option>
+                            {% for role in valid_roles %}<option value="{{ role }}" {% if user.secondary_role == role %}selected{% endif %}>{{ role.replace('_', ' ')|title }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small text-muted mb-0">Passwort</label>
+                        <input type="text" name="password" class="form-control form-control-sm" placeholder="Neu (opt)">
+                    </div>
+                    <div class="col-md-4 d-flex justify-content-end gap-2 align-items-end">
+                        <button type="submit" class="btn btn-sm btn-primary">Speichern</button>
+                        <a href="{{ url_for('delete_user', user_id=user.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Benutzer {{ user.username }} wirklich löschen?');">Löschen</a>
+                    </div>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        <hr>
+
+        <h5>Globale Einstellungen</h5>
+        <form action="{{ url_for('save_settings') }}" method="POST" class="mb-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="paypal_link_team1" class="form-label">PayPal Link (Erste Mannschaft)</label>
+                    <input type="text" name="paypal_link_team1" id="paypal_link_team1" class="form-control" value="{{ settings.get('paypal_link_team1', '') }}" placeholder="https://paypal.me/Team1">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="paypal_email_team1" class="form-label">PayPal E-Mail (Erste Mannschaft)</label>
+                    <input type="email" name="paypal_email_team1" id="paypal_email_team1" class="form-control" value="{{ settings.get('paypal_email_team1', '') }}" placeholder="kasse1@tsv.de">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="paypal_link_team2" class="form-label">PayPal Link (Zweite Mannschaft)</label>
+                    <input type="text" name="paypal_link_team2" id="paypal_link_team2" class="form-control" value="{{ settings.get('paypal_link_team2', settings.get('paypal_link', '')) }}" placeholder="https://paypal.me/Team2">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="paypal_email_team2" class="form-label">PayPal E-Mail (Zweite Mannschaft)</label>
+                    <input type="email" name="paypal_email_team2" id="paypal_email_team2" class="form-control" value="{{ settings.get('paypal_email_team2', '') }}" placeholder="kasse2@tsv.de">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="game_fee" class="form-label">Standard Spielgebühr (€)</label>
+                    <input type="number" step="0.01" name="game_fee" id="game_fee" class="form-control" value="{{ settings.get('game_fee', '3.00') }}">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="session_lifetime_days" class="form-label">Sitzungsdauer (Tage)</label>
+                    <input type="number" name="session_lifetime_days" id="session_lifetime_days" class="form-control" value="{{ settings.get('session_lifetime_days', '3650') }}" min="1">
+                    <div class="form-text">Wie lange Benutzer eingeloggt bleiben (Standard: 3650 Tage).</div>
+                </div>
+            </div>
+            
+             <div class="mb-3">
+                <label class="form-label">Haupt-Gast-Link (View-Only, 7 Tage)</label>
+                <div class="input-group">
+                    <button type="button" class="btn btn-outline-secondary" onclick="generateGuestLink()">Link generieren</button>
+                    <input type="text" id="guest-link-output" class="form-control" readonly placeholder="Link erscheint hier...">
+                    <button type="button" class="btn btn-outline-primary" onclick="copyGuestLink()">Kopieren</button>
+                </div>
+                <div class="form-text">Erstellt einen Link, mit dem jeder die App sehen kann (ohne Admin/Schulden). Der Link ist 7 Tage gültig.</div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="doubling_active_team1" name="doubling_active_team1" {% if settings.get('doubling_active_team1') == '1' %}checked{% endif %}>
+                        <label class="form-check-label" for="doubling_active_team1">Automatische Strafen-Verdopplung (Team 1)</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="doubling_active_team2" name="doubling_active_team2" {% if settings.get('doubling_active_team2') == '1' %}checked{% endif %}>
+                        <label class="form-check-label" for="doubling_active_team2">Automatische Strafen-Verdopplung (Team 2)</label>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Globale Einstellungen speichern</button>
+        </form>
+        <hr>
+
+        <!-- NEU: Darten-Export Sektion -->
+        <h5>Daten-Export</h5>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('download_backup') }}" class="btn btn-success">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-spreadsheet-fill me-1" viewBox="0 0 16 16"><path d="M6 12v-2h3v2H6z"/><path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zM3 9h10v1h-3v2h3v1h-3v2H9v-2H6v2H5v-2H3v-1h2v-2H3V9z"/></svg>
+                Excel Backup
+            </a>
+            <a href="{{ url_for('generate_season_report', season=selected_season) }}" class="btn btn-info">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-pdf-fill me-1" viewBox="0 0 16 16"><path d="M5.523 12.424q.21-.124.453-.227a7.4 7.4 0 0 1-.453.227z"/><path fill-rule="evenodd" d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2l-3-3zM4.165 13.668c.09.18.23.343.438.419.207.075.412.004.58-.174.168-.178.22-.439.188-.656a4.2 4.2 0 0 0-.215-.626c-.02-.032-.04-.06-.06-.088a.5.5 0 0 0-.29-.11h-.02a.5.5 0 0 0-.29.15c-.095.1-.122.23-.11.368.01.127.06.266.14.454.08.188-1.54 1.54-1.54 1.54a.5.5 0 0 0 .153.794c.092-.01.19-.026.28-.045a4.8 4.8 0 0 1 .458-.138zM8.5 7.5a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2a.5.5 0 0 1 .5-.5zm1.853 3.353a.5.5 0 0 0-.707-.707L9.5 10.293V8.5a.5.5 0 0 0-1 0v1.793L8.354 10.147a.5.5 0 0 0-.707.707l1.5 1.5a.5.5 0 0 0 .707 0l1.5-1.5z"/></svg>
+                Saisonbericht (PDF)
+            </a>
+        </div>
+
+        <hr>
+        <h5>Push-Abo Verwaltung</h5>
+        <p class="text-muted small">Hier sehen Sie alle registrierten Geräte für Push-Benachrichtigungen.</p>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Spieler</th>
+                        <th>Endpoint (gekürzt)</th>
+                        <th>Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in push_subscriptions %}
+                    <tr>
+                        <td>{{ sub.id }}</td>
+                        <td>
+                            {% if sub.player %}
+                                {{ sub.player.name }}
+                            {% else %}
+                                <span class="text-muted">Unbekannt (ID: {{ sub.player_id }})</span>
+                            {% endif %}
+                        </td>
+                        <td title="{{ sub.endpoint }}">
+                            <small>{{ sub.endpoint[:30] }}...</small>
+                        </td>
+                        <td>
+                            <form action="{{ url_for('delete_push_subscription', sub_id=sub.id) }}" method="POST" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Abo {{ sub.id }} wirklich löschen?')">Löschen</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">Keine Push-Abos vorhanden.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<!-- Image Cropper Modal -->
+<div class="modal fade" id="cropperModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Profilbild anpassen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <!-- Cropper Container -->
+        <div class="position-relative overflow-hidden mx-auto mb-3 bg-dark" style="width: 300px; height: 300px; border-radius: 4px; touch-action: none; user-select: none;">
+            <!-- Das Bild -->
+            <img id="cropperImage" src="" style="position: absolute; top: 0; left: 0; transform-origin: 0 0; cursor: move; max-width: none;">
+            
+            <!-- Der Kreis-Overlay (Visuelle Hilfe) -->
+            <div class="position-absolute top-0 start-0 w-100 h-100 pe-none" 
+                 style="background: radial-gradient(circle at center, transparent 148px, rgba(0,0,0,0.5) 150px); border: 1px solid #fff;">
+            </div>
+            <div class="position-absolute top-0 start-0 w-100 h-100 pe-none d-flex align-items-center justify-content-center">
+                <div style="width: 300px; height: 300px; border: 2px solid rgba(255,255,255,0.8); border-radius: 50%;"></div>
+            </div>
+        </div>
+
+        <!-- Zoom Controls -->
+        <div class="d-flex align-items-center gap-2 px-3">
+            <i class="bi bi-dash-lg"></i>
+            <input type="range" class="form-range" id="cropperZoom" min="0.5" max="3.0" step="0.01" value="1.0">
+            <i class="bi bi-plus-lg"></i>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="cropperSaveBtn">
+            Speichern & Hochladen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}?v=image_cropper_final"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Mobile Navigation Logik
+    const mobileSelect = document.getElementById('mobile-tab-select');
+    if (mobileSelect) {
+        mobileSelect.addEventListener('change', function() {
+            const targetTabSelector = this.value; 
+            const tabButton = document.querySelector(targetTabSelector); 
+            if (tabButton) {
+                const tab = new bootstrap.Tab(tabButton);
+                tab.show();
+            }
+        });
+        const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
+        tabButtons.forEach(btn => {
+            btn.addEventListener('shown.bs.tab', event => {
+                const activeId = '#' + event.target.id;
+                if (mobileSelect.value !== activeId) { mobileSelect.value = activeId; }
+            });
+        });
+
+        // Initial Sync: Falls beim Laden schon ein Tab aktiv ist (z.B. durch admin.js Restore)
+        const activeTab = document.querySelector('button[data-bs-toggle="tab"].active');
+        if (activeTab) {
+             const activeId = '#' + activeTab.id;
+             if (mobileSelect.value !== activeId) { mobileSelect.value = activeId; }
+        }
+    }
+
+    const teamSelect = document.getElementById('fine_team_select');
+    const catalogSelect = document.getElementById('fine_catalog_select');
+    
+    if (teamSelect && catalogSelect) {
+        // 1. Daten aller Optionen initial sichern (bevor wir sie löschen)
+        // Wir müssen auch die Optgroups erfassen
+        const items = [];
+        
+        // Helper: Daten aus einer Option extrahieren
+        function getOptionData(opt) {
+            return {
+                type: 'option',
+                value: opt.value,
+                text: opt.text,
+                team: opt.getAttribute('data-team'),
+                disabled: opt.disabled,
+                selected: opt.selected
+            };
+        }
+
+        // Iteriere über Kinder des Selects (Options oder Optgroups)
+        Array.from(catalogSelect.children).forEach(child => {
+            if (child.tagName === 'OPTGROUP') {
+                 // Ganze Gruppe speichern
+                 const groupData = {
+                     type: 'optgroup',
+                     label: child.label,
+                     options: Array.from(child.children).map(getOptionData)
+                 };
+                 items.push(groupData);
+            } else if (child.tagName === 'OPTION') {
+                 items.push(getOptionData(child));
+            }
+        });
+
+        function rebuildCatalog() {
+            const selectedTeam = teamSelect.value;
+            
+            // 2. Dropdown leeren
+            catalogSelect.innerHTML = '';
+            
+            // 3. Passende Elemente wieder einfügen
+            items.forEach(item => {
+                if (item.type === 'optgroup') {
+                    // Prüfe, ob Optionen in dieser Gruppe für das gewählte Team relevant sind
+                    const visibleOptions = item.options.filter(optData => {
+                        return (!optData.team || optData.team === "None" || optData.team === "" || optData.team === selectedTeam);
+                    });
+                    
+                    if (visibleOptions.length > 0) {
+                        const newGroup = document.createElement('optgroup');
+                        newGroup.label = item.label;
+                        
+                        visibleOptions.forEach(optData => {
+                            const newOpt = document.createElement('option');
+                            newOpt.value = optData.value;
+                            newOpt.text = optData.text;
+                            if (optData.team) newOpt.setAttribute('data-team', optData.team);
+                            if (optData.disabled) newOpt.disabled = true;
+                            newGroup.appendChild(newOpt);
+                        });
+                        catalogSelect.appendChild(newGroup);
+                    }
+                } else {
+                    // Einzelne Option (z.B. Placeholder)
+                    const isPlaceholder = item.value === "";
+                    const isUniversal = !item.team || item.team === "None" || item.team === "";
+                    const isMatch = item.team === selectedTeam;
+                    
+                    if (isPlaceholder || isUniversal || isMatch) {
+                        const newOpt = document.createElement('option');
+                        newOpt.value = item.value;
+                        newOpt.text = item.text;
+                        if (item.team) newOpt.setAttribute('data-team', item.team);
+                        if (item.disabled) newOpt.disabled = true;
+                        // Placeholder selektieren wir neu (als Reset)
+                        if (isPlaceholder) newOpt.selected = true;
+                        
+                        catalogSelect.appendChild(newOpt);
+                    }
+                }
+            });
+            
+            // Sicherstellen, dass der Placeholder gewählt ist (Reset)
+            catalogSelect.value = "";
+        }
+
+        teamSelect.addEventListener('change', rebuildCatalog);
+        
+        // Initial ausführen
+        rebuildCatalog();
+    }
+
+    // --- SORTIERUNG SPIELER BEI EINZAHLUNG ---
+    const paymentTeamSelect = document.getElementById('payment_team_select');
+    const paymentPlayerSelect = document.getElementById('payment_player_select');
+    
+    if (paymentTeamSelect && paymentPlayerSelect) {
+        function sortPaymentPlayers() {
+            const selectedTeam = paymentTeamSelect.value;
+            // Balance-Attribut auswählen (team1 oder team2)
+            const balanceAttr = selectedTeam === 'team1' ? 'data-balance-team1' : 'data-balance-team2';
+            
+            // Optionen sammeln (ohne Placeholder)
+            let options = [];
+            let placeholder = null;
+            
+            Array.from(paymentPlayerSelect.options).forEach(opt => {
+                if (opt.value === "") {
+                    placeholder = opt;
+                } else {
+                    options.push(opt);
+                }
+            });
+            
+            // Helper: Lastname extraction in JS
+            function getLastnameSortKey(fullName) {
+                if (!fullName) return "";
+                const parts = fullName.trim().split(" ");
+                if (parts.length === 0) return "";
+                const lastname = parts[parts.length - 1].toLowerCase();
+                const firstnames = parts.slice(0, parts.length - 1).join(" ").toLowerCase();
+                return lastname + " " + firstnames;
+            }
+
+            // Sortieren
+            options.sort((a, b) => {
+                const balA = parseFloat(a.getAttribute(balanceAttr)) || 0;
+                const balB = parseFloat(b.getAttribute(balanceAttr)) || 0;
+                
+                // Hat Schulden? (< 0)
+                const aHasDebt = balA < 0;
+                const bHasDebt = balB < 0;
+                
+                // Priorität 1: Schulden kommen vor Nicht-Schulden
+                if (aHasDebt && !bHasDebt) return -1;
+                if (!aHasDebt && bHasDebt) return 1;
+                
+                // Priorität 2: Innerhalb der Schulden nach Betrag sortieren
+                // Wir wollen die "meisten Schulden" (also den kleinsten/negativsten Wert) oben
+                // balA = -50, balB = -10 -> a - b = -40 (negativ) -> A kommt zuerst. Passt.
+                if (aHasDebt && bHasDebt) {
+                    if (balA !== balB) {
+                        return balA - balB;
+                    }
+                }
+                
+                // Priorität 3: Wenn kein Unterschied in Schulden-Status oder Schulden-Höhe -> Alphabetisch
+                return getLastnameSortKey(a.text).localeCompare(getLastnameSortKey(b.text));
+            });
+            
+            // Neu aufbauen
+            paymentPlayerSelect.innerHTML = '';
+            if (placeholder) paymentPlayerSelect.appendChild(placeholder);
+            options.forEach(opt => paymentPlayerSelect.appendChild(opt));
+            
+            // Optional: Wenn ein Placeholder da war, ihn selektiert lassen
+            if (placeholder) paymentPlayerSelect.value = "";
+        }
+        
+        // Event Listener
+        paymentTeamSelect.addEventListener('change', sortPaymentPlayers);
+        
+        // Initial sorting
+        sortPaymentPlayers();
+    }
+
+    // --- NEU: Tab-State aus Hash wiederherstellen (für Reload) ---
+    var hash = window.location.hash;
+    if (hash) {
+        // Suche Button mit ID = hash (minus #) ODER target = hash
+        // Hier: Wir nehmen an, der Hash ist z.B. #nav-log-tab
+        var triggerEl = document.querySelector(hash);
+        if (!triggerEl) {
+             // Fallback: Hash ist vielleicht das Ziel-Pane (#nav-log) -> Button suchen
+             triggerEl = document.querySelector('button[data-bs-target="' + hash + '"]');
+        }
+        
+        if (triggerEl) {
+             var tab = new bootstrap.Tab(triggerEl);
+             tab.show();
+        }
+    }
+
+    // Hash beim Tab-Wechsel aktualisieren
+    var tabElList = [].slice.call(document.querySelectorAll('button[data-bs-toggle="tab"]'))
+    tabElList.forEach(function (triggerEl) {
+      triggerEl.addEventListener('shown.bs.tab', function (event) {
+        var id = event.target.getAttribute('id');
+        if(id) {
+            history.replaceState(null, null, ' #' + id);
+        }
+      })
+    })
+
+});
+</script>
+{% endblock %}

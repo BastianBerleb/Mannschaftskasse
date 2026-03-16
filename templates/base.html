@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+<script>!function(){var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t);else document.documentElement.setAttribute('data-theme','dark')}()</script>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    
+    <!-- PWA MANIFEST & THEME -->
+    <meta name="theme-color" content="#0f172a"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="TSV Mannschaftskasse">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="msapplication-TileColor" content="#212529">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <link rel="manifest" href="{{ url_for('static', filename='app/manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}">
+    <link rel="apple-touch-startup-image" href="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}">
+    
+    <!-- SEO & Description -->
+    <meta name="description" content="Digitale Mannschaftskasse für TSV Alteglofsheim - Spielerkonten, Strafen und Statistiken verwalten">
+    <meta name="keywords" content="TSV Alteglofsheim, Mannschaftskasse, Fußball, Vereinsverwaltung">
+    
+    <title>{% block title %}Mannschaftskasse TSV Alteglofsheim{% endblock %}</title>
+    <!-- CSRF Token -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% block head %}{% endblock %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="{{ url_for('static', filename='css/premium.css') }}?v=5" rel="stylesheet">
+    <!-- Chart.js wird nur auf Seiten geladen die es brauchen (via block extra_scripts) -->
+    <style>
+        .navbar-brand img {
+            height: 50px;
+            margin-right: 10px;
+        }
+        .balance-positive { color: green; font-weight: bold; }
+        .balance-negative { color: red; font-weight: bold; }
+        .transaction-positive { color: green; }
+        .transaction-negative { color: red; }
+        .transaction-kistl { color: #8B4513; }
+        body { padding-bottom: 60px; }
+		.overflow-x-auto {
+            overflow-x: auto;
+            /* Versteckt die Scrollbar auf Webkit-Browsern (Chrome, Safari) */
+            &::-webkit-scrollbar {
+                display: none;
+            }
+            /* Versteckt die Scrollbar auf Firefox */
+            scrollbar-width: none;
+            /* Versteckt die Scrollbar auf IE/Edge */
+            -ms-overflow-style: none;
+        }
+        
+        /* App-Install Banner Styles */
+        .app-install-banner {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            border: none;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+            animation: slideInDown 0.5s ease-out;
+        }
+        
+        .app-install-banner .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        
+        @keyframes slideInDown {
+            from {
+                transform: translateY(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .app-install-button {
+            animation: pulse 2s infinite;
+        }
+        
+        .feature-highlight {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+        }
+
+        /* Mobile Install Overlay */
+        .mobile-install-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInOverlay 0.5s ease-out;
+        }
+        
+        .mobile-install-logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            animation: bounceIn 0.8s ease-out;
+        }
+        
+        @keyframes fadeInOverlay {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes fadeOutOverlay {
+            from {
+                opacity: 1;
+                transform: scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+        }
+        
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        /* Nur auf Mobile anzeigen */
+        @media (min-width: 769px) {
+            .mobile-install-overlay {
+                display: none !important;
+            }
+        }
+
+        /* PWA-spezifische Styles */
+        .pwa-mode .navbar {
+            padding-top: env(safe-area-inset-top);
+        }
+        
+        .pwa-mode {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+        
+        .pwa-exclusive {
+            display: none;
+        }
+        
+        .pwa-mode .pwa-exclusive {
+            display: block;
+        }
+        
+        .browser-only {
+            display: block;
+        }
+        
+        .pwa-mode .browser-only {
+            display: none;
+        }
+
+        /* Verbesserte Touch-Targets für PWA */
+        .pwa-mode .btn {
+            min-height: 44px;
+            min-width: 44px;
+        }
+        
+        .pwa-mode .list-group-item {
+            min-height: 48px;
+        }
+    </style>
+    
+    <!-- PWA Installation Manager -->
+    <script src="{{ url_for('static', filename='js/pwa-install.js') }}?v=2025-01-12-v2" defer></script>
+    <script src="{{ url_for('static', filename='js/sw-register.js') }}?v=2025-01-12-v2" defer></script>
+  </head>
+  <body class="bg-light">
+    <!-- Modern Sticky Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-light border-bottom mb-4 sticky-top">
+      <div class="container-fluid">
+        <a class="navbar-brand fw-bold text-primary" href="{{ url_for('index') }}">
+          <img src="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}" alt="TSV Wappen">
+          TSV Kasse
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Spielerübersicht</a></li>
+            {% if current_user.is_authenticated and current_user.role != 'player' %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('kasse') }}">Mannschaftskasse</a></li>
+            {% endif %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('strafenkatalog') }}">Strafenkatalog</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('geburtstage') }}">Geburtstage</a></li>
+            {% if current_user.role in ['admin', 'auditor', 'viewer', 'trikot_manager_1', 'trikot_manager_2'] %}
+			<li class="nav-item"><a class="nav-link" href="{{ url_for('spieltag_log') }}">Spieltag-Log</a></li>
+            {% endif %}
+            {% if current_user.is_authenticated %}
+			{% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] and current_user.role != 'guest' %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('schulden') }}">Gruppenerinnerung</a></li>
+			{% endif %}
+            {% if current_user.role not in ['player', 'guest', 'viewer'] %}
+            <li class="nav-item" id="nav-item-admin">
+              <a class="nav-link" href="{{ url_for('admin') }}">
+                {% if current_user.role in ['strafen_manager_1', 'strafen_manager_2'] %}
+                  Strafen-Verwaltung
+                {% elif current_user.role in ['trikot_manager_1', 'trikot_manager_2'] %}
+                  Trikotgeld-Verwaltung
+                {% else %}
+                  Admin
+                {% endif %}
+              </a>
+            </li>
+            <li class="nav-item" id="nav-item-offline" style="display: none;">
+                <a class="nav-link text-warning" href="{{ url_for('offline') }}">
+                    <span class="d-md-none">⚠️ Offline</span>
+                    <span class="d-none d-md-inline">⚠️ Admin (Offline)</span>
+                </a>
+            </li>
+            {% endif %}
+            {% endif %}
+          </ul>        
+          <!-- Theme Toggle -->
+          <button id="theme-toggle" class="theme-toggle" title="Design wechseln" aria-label="Toggle dark/light mode">
+            <span id="theme-icon">☀️</span>
+          </button>
+          <!-- PWA-Installation Button -->
+          <button id="pwa-install-button" class="btn btn-outline-primary btn-sm rounded-pill fw-bold me-3 shadow-sm" style="display: none;">
+            <span class="d-none d-md-inline">📱 App installieren</span>
+            <span class="d-md-none">📱</span>
+          </button>
+
+          <!-- ROLE SWITCHER / BADGE -->
+          {% if current_user.is_authenticated %}
+            {% if current_user.real_role == 'admin' %}
+            
+            {% if current_user.secondary_role and current_user.secondary_role != 'none' %}
+                {% if current_user.role == 'admin' %}
+                    <a href="{{ url_for('switch_role', target_role=current_user.secondary_role) }}" 
+                       class="btn btn-warning btn-sm me-2 fw-bold" 
+                       title="Wechsle zu {{ current_user.secondary_role|replace('_', ' ')|title }}">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16"><path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/><path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/></svg>
+                       {{ current_user.secondary_role|replace('_', ' ')|title }}
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('switch_role', target_role='reset') }}" 
+                       class="btn btn-danger btn-sm me-2 fw-bold" 
+                       title="Zurück zu Admin">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle-fill" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/></svg>
+                       Admin
+                    </a>
+                {% endif %}
+            {% endif %}
+
+            <div class="dropdown d-inline-block me-2">
+              <button class="btn btn-sm {% if current_user.role == 'admin' %}btn-outline-warning{% else %}btn-warning{% endif %} dropdown-toggle" type="button" id="roleDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                {% if current_user.role == 'admin' %}
+                  Admin
+                {% else %}
+                  <span class="fw-bold">Als: {{ current_user.role|replace('_', ' ')|title }}</span>
+                {% endif %}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="roleDropdown">
+                <li><h6 class="dropdown-header">Rolle wechseln</h6></li>
+                <li><a class="dropdown-item {% if current_user.role == 'admin' %}active{% endif %}" href="{{ url_for('switch_role', target_role='reset') }}">Admin (Reset)</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='trikot_manager_2') }}">Trikotmanager 2</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='trikot_manager_1') }}">Trikotmanager 1</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='strafen_manager_2') }}">Strafenmanager 2</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='strafen_manager_1') }}">Strafenmanager 1</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='viewer') }}">Vereinsverantwortlicher (Viewer)</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='player') }}">Spieler (View Only)</a></li>
+              </ul>
+            </div>
+            {% else %}
+            <span class="badge bg-secondary me-3 align-self-center">Rolle: {{ current_user.role|replace('_', ' ')|title }}</span>
+            {% endif %}
+          {% endif %}
+
+          <ul class="navbar-nav">
+            {% if current_user.is_authenticated %}
+              {% if current_user.role != 'guest' %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('change_password') }}">Passwort ändern</a></li>
+              {% endif %}
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('logout') }}" 
+                   onclick="return confirmLogout(event)">
+                  <span class="d-none d-md-inline">🚪 Logout</span>
+                  <span class="d-md-none">🚪</span>
+                </a>
+              </li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- App-Installation Banner (nur im Browser, nicht in der App) -->
+    <div id="app-install-banner" class="alert app-install-banner text-white mx-3 mb-3 d-none" role="alert">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center mb-2">
+            <h5 class="alert-heading mb-0 me-2">📱 TSV Kasse als App installieren!</h5>
+            <button type="button" class="btn-close" aria-label="Schließen" onclick="dismissInstallBanner()"></button>
+          </div>
+          <div class="row">
+            <div class="col-12 text-center">
+              <button id="install-app-btn" class="btn btn-light btn-lg app-install-button">
+                <strong>📲 Jetzt kostenlos installieren</strong>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile-optimierter Mini-Banner -->
+    <div id="app-install-mini-banner" class="alert alert-success mx-3 mb-3 d-none" role="alert">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>📱 Als App installieren</strong>
+          <small class="d-block">Für Startbildschirm & Offline-Nutzung</small>
+        </div>
+        <div>
+          <button id="install-app-mini-btn" class="btn btn-success btn-sm me-2">Installieren</button>
+          <button type="button" class="btn-close" aria-label="Schließen" onclick="dismissInstallBanner()"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vollbild Mobile App Install Banner -->
+    <div id="mobile-install-overlay" class="mobile-install-overlay d-none">
+      <div class="container text-center text-white p-4">
+        <div class="mb-4">
+          <img src="{{ url_for('static', filename='images/tsv-alteglofsheim.jpg') }}" alt="TSV Logo" class="mobile-install-logo">
+        </div>
+        
+        <h1 class="display-4 fw-bold mb-5">📱 Mannschaftskasse als App installieren</h1>
+        
+        <div class="d-grid gap-3">
+          <button id="mobile-install-button" class="btn btn-light btn-lg">
+            <strong>📥 Jetzt als App installieren</strong>
+          </button>
+          
+          <button id="mobile-install-instructions" class="btn btn-outline-light btn-lg">
+            📖 Installationsanleitung anzeigen
+          </button>
+          
+          <button id="mobile-install-dismiss" class="btn btn-outline-light">
+            ❌ Später erinnern
+          </button>
+          
+          <button id="mobile-install-never" class="btn btn-link text-white-50">
+            <small>Nie wieder anzeigen</small>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global Toast Container for Notifications -->
+    <div class="toast-container position-fixed top-0 end-0 p-3 mt-5" style="z-index: 1090;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              {% set bg_class = 'bg-primary' %}
+              {% set text_class = 'text-white' %}
+              {% if category == 'success' %} {% set bg_class = 'bg-success' %} {% set text_class = 'text-white' %}
+              {% elif category == 'error' or category == 'danger' %} {% set bg_class = 'bg-danger' %} {% set text_class = 'text-white' %}
+              {% elif category == 'warning' %} {% set bg_class = 'bg-warning' %} {% set text_class = 'text-dark' %}
+              {% elif category == 'info' %} {% set bg_class = 'bg-info' %} {% set text_class = 'text-dark' %}
+              {% endif %}
+              <div class="toast align-items-center border-0 {{ bg_class }} {{ text_class }} shadow-lg mb-2 rounded-3" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                  <div class="toast-body fw-bold">
+                    {% if category == 'success' %}<i class="bi bi-check-circle-fill me-2 fs-5 align-middle"></i>
+                    {% elif category == 'error' or category == 'danger' %}<i class="bi bi-exclamation-triangle-fill me-2 fs-5 align-middle"></i>
+                    {% elif category == 'warning' %}<i class="bi bi-exclamation-circle-fill me-2 fs-5 align-middle"></i>
+                    {% elif category == 'info' %}<i class="bi bi-info-circle-fill me-2 fs-5 align-middle"></i>
+                    {% endif %}
+                    <span class="align-middle">{{ message }}</span>
+                  </div>
+                  <button type="button" class="btn-close {% if text_class == 'text-white' %}btn-close-white{% endif %} me-3 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content Container -->
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+<!-- Unauffälliger Footer mit Rechtstexten -->
+<footer class="mt-5 py-3 text-center text-muted border-top">
+    <div class="container">
+        <small>
+            &copy; 2026 Bastian Berleb &middot; 
+            <a href="{{ url_for('impressum') }}" class="text-decoration-none text-muted">Impressum</a> &middot; 
+            <a href="{{ url_for('datenschutz') }}" class="text-decoration-none text-muted">Datenschutz</a>
+        </small>
+    </div>
+</footer>
+
+<!-- Scripte am Ende laden -->
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<!-- Push Manager global verfügbar machen -->
+<script src="{{ url_for('static', filename='js/push-manager.js') }}"></script>
+<script>
+    // Automatisches Schließen der Navbar auf Mobile bei Klick
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initialize Toasts
+        var toastElList = [].slice.call(document.querySelectorAll('.toast'))
+        var toastList = toastElList.map(function (toastEl) {
+            return new bootstrap.Toast(toastEl, { delay: 4000 });
+        });
+        toastList.forEach(toast => toast.show());
+
+        const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+        const navCollapse = document.getElementById('navbarNav');
+        // Sicherstellen, dass das Element existiert
+        if (navCollapse) {
+            navLinks.forEach(function (link) {
+                link.addEventListener('click', function () {
+                    // Prüfen ob die Navbar gerade offen ist (Klasse .show)
+                    if (navCollapse.classList.contains('show')) {
+                        // Bootstrap Collapse Instanz holen oder erstellen und toggeln
+                        const bsCollapse = bootstrap.Collapse.getInstance(navCollapse) || new bootstrap.Collapse(navCollapse, {toggle: false});
+                        bsCollapse.hide();
+                    }
+                });
+            });
+        }
+    });
+</script>
+<script>
+    // --- THEME TOGGLE ---
+    (function() {
+        var toggle = document.getElementById('theme-toggle');
+        var icon = document.getElementById('theme-icon');
+        var meta = document.querySelector('meta[name="theme-color"]');
+        
+        function updateIcon() {
+            var current = document.documentElement.getAttribute('data-theme');
+            if (icon) icon.textContent = current === 'dark' ? '☀️' : '🌙';
+            if (meta) meta.content = current === 'dark' ? '#0f172a' : '#ffffff';
+        }
+        
+        updateIcon();
+        
+        if (toggle) {
+            toggle.addEventListener('click', function() {
+                var current = document.documentElement.getAttribute('data-theme');
+                var next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+                updateIcon();
+            });
+        }
+    })();
+</script>
+
+{% block scripts %}{% endblock %}
+
+{% if current_user.is_authenticated %}
+<script>
+    // --- PUSH DEBUGGER & AUTO-INIT v6 ---
+    document.addEventListener('DOMContentLoaded', async function() {
+       const debugMode = false; // Set to true to see debug bar on screen
+       
+       function log(msg) {
+           console.log("[PushInit] " + msg);
+           if (debugMode) {
+               let bar = document.getElementById('push-debug-bar');
+               if (!bar) {
+                   bar = document.createElement('div');
+                   bar.id = 'push-debug-bar';
+                   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;padding:2px;z-index:999999;pointer-events:none;';
+                   document.body.appendChild(bar);
+               }
+               bar.innerHTML = msg; // + " | " + bar.innerHTML;
+           }
+       }
+
+       log("Start.");
+       
+       // 1. User Check
+       const myPlayerId = {{ current_user.player_id if current_user.player_id else 'null' }};
+       if (!myPlayerId) {
+           log("Kein Player-ID verknüpft. Abbruch.");
+           return;
+       }
+
+       // 2. Browser Check
+       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+           log("Push API fehlt.");
+           return;
+       }
+
+       // 3. Permission Check (Der Schlüssel für "Automatisch")
+       const perm = Notification.permission;
+       log("Permission: " + perm);
+
+       if (perm === 'denied') {
+           log("Push blockiert.");
+           return;
+       }
+
+       // 4. Service Worker Ready
+       try {
+           log("Warte auf SW...");
+           // Wir warten auf den SW, den sw-register.js registriert
+           const reg = await navigator.serviceWorker.ready;
+           log("SW bereit: " + (reg.active ? 'Active' : 'Not Active'));
+           
+           const sub = await reg.pushManager.getSubscription();
+           
+           if (sub) {
+               // A) Bereits abonniert -> Silent Sync (Immer!)
+               log("Abo gefunden. Sync...");
+               if (typeof subscribeDeviceForPlayer === 'function') {
+                   // Im Hintergrund verknüpfen (Silent Mode)
+                   subscribeDeviceForPlayer(myPlayerId, reg, sub, true).catch(e => log("Sync err: " + e));
+               }
+           } else {
+               // B) Kein Abo. 
+               // Ist es ein Login?
+               const params = new URLSearchParams(window.location.search);
+               const isLogin = params.has('login');
+               
+               if (perm === 'granted') {
+                   // C) Erlaubnis da, aber kein Abo (z.B. Cache cleared) -> AUTO RE-SUBSCRIBE
+                   log("Permission granted. Auto-Sub...");
+                   if (typeof subscribeDeviceForPlayer === 'function') {
+                       // Silent Mode
+                       subscribeDeviceForPlayer(myPlayerId, reg, null, true).then(() => {
+                           log("Auto-Sub fertig!");
+                           // Optional: Erfolgs-Toast
+                       });
+                   }
+               } else if (isLogin) {
+                   // D) Permission default (fragt User) UND Login -> Zeige Prompt
+                   log("Zeige Prompt...");
+                   showPushPermissionRequest(myPlayerId, reg);
+                   // URL cleanen
+                   const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                   window.history.replaceState({path:newUrl}, '', newUrl);
+               } else {
+                   log("Kein Login, keine Perm. Idle.");
+               }
+           }
+
+       } catch (e) {
+           log("Error: " + e.message);
+       }
+    });
+
+    function showPushPermissionRequest(playerId, reg) {
+        // UI für iOS Permission Request
+        const toastHtml = `
+            <div id="push-permission-toast" class="toast align-items-center text-white bg-primary border-0 show" role="alert" aria-live="assertive" aria-atomic="true" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100000; max-width: 90%; width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <strong class="fs-6">📱 Push-Nachrichten aktivieren?</strong><br>
+                        <span class="small opacity-75">Bleib auf dem Laufenden über Zahlungen & Spiele.</span>
+                        <div class="mt-3 d-grid gap-2">
+                            <button type="button" id="btn-activate-push" class="btn btn-light text-primary fw-bold">Ja, aktivieren</button>
+                            <button type="button" class="btn btn-sm btn-link text-white text-decoration-none" data-bs-dismiss="toast">Später</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', toastHtml);
+        
+        const btn = document.getElementById('btn-activate-push');
+        if(btn) {
+            btn.addEventListener('click', async function() {
+                this.disabled = true;
+                this.textContent = '...';
+                try {
+                    // Silent Mode = kein Redirect
+                    await subscribeDeviceForPlayer(playerId, reg, null, true);
+                    const toast = document.getElementById('push-permission-toast');
+                    if(toast) { bootstrap.Toast.getOrCreateInstance(toast).hide(); }
+                } catch(e) {
+                    console.error(e);
+                    this.textContent = 'Fehler (siehe Konsole)';
+                }
+            });
+        }
+    }
+</script>
+{% endif %}
+<script>
+    // Offline/Online Detection UI Handler
+    function updateOnlineStatusUI() {
+        var adminItem = document.getElementById('nav-item-admin');
+        var offlineItem = document.getElementById('nav-item-offline');
+        
+        // 1. Navigation toggle
+        if (adminItem && offlineItem) {
+            if (navigator.onLine) {
+                adminItem.style.display = '';
+                offlineItem.style.display = 'none';
+            } else {
+                adminItem.style.display = 'none';
+                offlineItem.style.display = '';
+            }
+        }
+        
+        // 2. Active Redirect Protection for Admin Area
+        if (!navigator.onLine) {
+            // Check if we are in a sensitive area (Admin)
+            // We use includes because sometimes paths are /admin?season=...
+            if (window.location.pathname.startsWith('/admin')) {
+                // Save current location to return later
+                sessionStorage.setItem('offline_return_url', window.location.href);
+                // Redirect to offline page (using literal path to avoid Jinja issues in JS if processed externally, though here it is inline)
+                window.location.href = "/offline";
+            }
+        }
+    }
+
+    window.addEventListener('online', updateOnlineStatusUI);
+    window.addEventListener('offline', updateOnlineStatusUI);
+    // Initial Check
+    document.addEventListener('DOMContentLoaded', updateOnlineStatusUI);
+</script>
+</body>
+</html>

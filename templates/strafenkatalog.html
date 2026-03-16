@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    :root {
+        --card-bg: #ffffff;
+        --card-shadow: var(--shadow-sm);
+        --primary-color: var(--bs-primary);
+        --secondary-color: var(--bs-secondary);
+        --bg-color: var(--app-bg);
+        --border-color: #f1f3f5;
+        --text-main: #343a40;
+        --text-sub: #495057;
+        --fine-bg: #f8f9fa;
+    }
+
+    html[data-theme="dark"] {
+        --card-bg: var(--bs-secondary-bg);
+        --border-color: rgba(255,255,255,0.08);
+        --text-main: #f1f5f9;
+        --text-sub: #cbd5e1;
+        --fine-bg: rgba(255,255,255,0.05);
+    }
+
+    .catalog-header {
+        margin-bottom: 1.5rem;
+    }
+
+    /* Custom Pills Nav */
+    .nav-pills-custom .nav-link {
+        background: var(--card-bg);
+        color: var(--text-sub);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 50rem;
+        padding: 0.6rem 1.25rem;
+        font-weight: 600;
+        margin-right: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        transition: all 0.2s;
+    }
+    
+    .nav-pills-custom .nav-link.active {
+        background: var(--bs-primary);
+        color: white;
+        border-color: var(--bs-primary);
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Category Cards */
+    .category-card {
+        background: var(--card-bg);
+        border-radius: var(--border-radius-xl);
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--bs-border-color);
+        overflow: hidden;
+        margin-bottom: 2rem;
+    }
+
+    .category-header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--card-bg);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .category-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+    .bg-icon-game { background: rgba(13, 110, 253, 0.1); color: #0d6efd; }
+    .bg-icon-training { background: rgba(25, 135, 84, 0.1); color: #198754; }
+    .bg-icon-general { background: var(--fine-bg); color: #6c757d; }
+
+    .category-title {
+        margin: 0;
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--text-main);
+    }
+
+    /* Fine Item */
+    .fine-item {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .fine-item:last-child { border-bottom: none; }
+
+    .fine-desc {
+        font-weight: 500;
+        color: var(--text-sub);
+        margin-right: 1rem;
+        font-size: 0.95rem;
+    }
+
+    .fine-amount {
+        font-weight: 700;
+        white-space: nowrap;
+        background: var(--fine-bg);
+        padding: 0.35rem 0.75rem;
+        border-radius: 8px;
+        color: var(--text-main);
+        font-size: 0.9rem;
+    }
+    
+    .fine-amount.is-kistl {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--bs-warning);
+    }
+
+    html[data-theme="light"] .fine-amount.is-kistl {
+        background: #fff3cd;
+        color: #856404;
+    }
+</style>
+
+<div class="catalog-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Strafenkatalog</h1>
+        <p class="text-muted small mb-0">Übersicht aller aktuellen Strafen</p>
+    </div>
+    <div class="emoji-header fs-1">⚖️</div>
+</div>
+
+{# Logik zur Bestimmung des Standard-Tabs #}
+{% set default_team1 = False %}
+{% if current_user.role in ['strafen_manager_1', 'trikot_manager_1'] %}
+    {% set default_team1 = True %}
+{% elif current_user.role == 'player' and current_user.player and current_user.player.team1 and not current_user.player.team2 %}
+    {% set default_team1 = True %}
+{% endif %}
+
+<ul class="nav nav-pills nav-pills-custom mb-4" id="catalogTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if not default_team1 %}active{% endif %}" id="team2-tab" data-bs-toggle="tab" data-bs-target="#team2-content" type="button" role="tab">
+        Zweite Mannschaft
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link {% if default_team1 %}active{% endif %}" id="team1-tab" data-bs-toggle="tab" data-bs-target="#team1-content" type="button" role="tab">
+        Erste Mannschaft
+    </button>
+  </li>
+</ul>
+
+{# Macro for rendering a list of fines #}
+{% macro render_fines_list(fines) %}
+    {% if not fines %}
+        <div class="alert alert-light text-center py-4 rounded-4 shadow-sm border-0">
+            <div class="fs-1 text-muted opacity-25 mb-2">🤷‍♂️</div>
+            <p class="text-muted fw-bold mb-0">Keine Strafen definiert</p>
+        </div>
+    {% else %}
+        {# Grouping Logic #}
+        {% set fines_game = [] %}
+        {% set fines_training = [] %}
+        {% set fines_general = [] %}
+        
+        {% for fine in fines %}
+            {% if fine.category == 'game' %}
+                {% set _ = fines_game.append(fine) %}
+            {% elif fine.category == 'training' %}
+                {% set _ = fines_training.append(fine) %}
+            {% else %}
+                {% set _ = fines_general.append(fine) %}
+            {% endif %}
+        {% endfor %}
+
+        {% if fines_game %}
+        <div class="category-card">
+            <div class="category-header">
+                <div class="category-icon bg-icon-game">⚽</div>
+                <h5 class="category-title">Spieltag</h5>
+            </div>
+            {% for fine in fines_game %}
+            <div class="fine-item">
+                <div class="fine-desc">{{ fine.description }}</div>
+                <div class="fine-amount {% if fine.type != 'money' %}is-kistl{% endif %}">
+                    {% if fine.type == 'money' %}{{ "%.2f"|format(fine.amount) }} €{% else %}{{ fine.amount|int }} Kistl{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if fines_training %}
+        <div class="category-card">
+            <div class="category-header">
+                <div class="category-icon bg-icon-training">🏃</div>
+                <h5 class="category-title">Training</h5>
+            </div>
+            {% for fine in fines_training %}
+            <div class="fine-item">
+                <div class="fine-desc">{{ fine.description }}</div>
+                <div class="fine-amount {% if fine.type != 'money' %}is-kistl{% endif %}">
+                    {% if fine.type == 'money' %}{{ "%.2f"|format(fine.amount) }} €{% else %}{{ fine.amount|int }} Kistl{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if fines_general %}
+        <div class="category-card">
+            <div class="category-header">
+                <div class="category-icon bg-icon-general">📝</div>
+                <h5 class="category-title">Allgemeines</h5>
+            </div>
+            {% for fine in fines_general %}
+            <div class="fine-item">
+                <div class="fine-desc">{{ fine.description }}</div>
+                <div class="fine-amount {% if fine.type != 'money' %}is-kistl{% endif %}">
+                    {% if fine.type == 'money' %}{{ "%.2f"|format(fine.amount) }} €{% else %}{{ fine.amount|int }} Kistl{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+    {% endif %}
+{% endmacro %}
+
+
+<div class="tab-content" id="catalogContent">
+  <!-- Inhalt Zweite -->
+  <div class="tab-pane fade {% if not default_team1 %}show active{% endif %}" id="team2-content" role="tabpanel">
+      {{ render_fines_list(fines_team2) }}
+  </div>
+
+  <!-- Inhalt Erste -->
+  <div class="tab-pane fade {% if default_team1 %}show active{% endif %}" id="team1-content" role="tabpanel">
+      {{ render_fines_list(fines_team1) }}
+  </div>
+</div>
+
+<div class="mt-4 text-center">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-lg rounded-pill px-4 shadow-sm">
+        « Zurück zur Übersicht
+    </a>
+</div>
+
+{% endblock %}

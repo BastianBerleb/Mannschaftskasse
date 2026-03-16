@@ -1,0 +1,119 @@
+<!-- templates/_player_item.html -->
+
+<div class="list-group-item" id="player-item-{{ player.id }}">
+    <!-- Grid-Klassen sind für mobile Geräte optimiert -->
+    <div class="row g-2 align-items-center">
+
+        <!-- Spalte für Profilbild Upload -->
+        <div class="col-auto">
+            <div class="position-relative" style="width: 40px; height: 40px;">
+                {% if player.image_path %}
+                    <img src="{{ url_for('static', filename=player.image_path.replace('static/', '')) }}" class="rounded-circle w-100 h-100 object-fit-cover border" alt="Profilbild" loading="lazy">
+                {% else %}
+                    <div class="rounded-circle w-100 h-100 bg-light d-flex align-items-center justify-content-center border text-muted fw-bold" style="font-size: 0.8rem;">
+                        {{ player.name[:2].upper() }}
+                    </div>
+                {% endif %}
+                
+                <!-- Upload Button Overlay -->
+                {% if current_user.role == 'admin' %}
+                <label for="upload-{{ player.id }}" class="position-absolute top-0 start-0 w-100 h-100 cursor-pointer opacity-0 hover-opacity-100" style="cursor: pointer;" title="Bild ändern">
+                    <input type="file" id="upload-{{ player.id }}" class="d-none image-upload-input" data-player-id="{{ player.id }}" accept="image/*">
+                </label>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Spalte für Push-Status (schmal) -->
+        <div class="col-auto d-flex gap-1">
+            {% if player.has_push %}
+                <span title="Push-Benachrichtigungen sind für diesen Spieler auf min. einem Gerät aktiviert." class="text-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bell-fill" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z"/></svg>
+                </span>
+            {% else %}
+                <span title="Push-Benachrichtigungen sind nicht aktiviert." class="text-muted">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bell-slash-fill" viewBox="0 0 16 16"><path d="M5.161 14.016A2 2 0 0 0 6 15h4a2 2 0 0 0 1.062-.416l-1.87-1.87a.5.5 0 0 1-.341-.131l-1.294-1.293l-1.12-1.12a.5.5 0 0 1-.131-.341L5.16 8.318l-2.01-2.01A5.002 5.002 0 0 0 1 6c0 1.098-.5 6-2 7h7.24l-2.08-2.08zM10 15a2 2 0 0 0 1.846-1.29L8.387 11.51 10 13.123zM8.995 1.099A1 1 0 0 0 8 0C6.5 0 5.004.87 4.17 2.176l1.325 1.325A3.987 3.987 0 0 1 8.995 1.1zM11 6c0-1.576-1.03-2.92-2.484-3.525l-1.32 1.32A2.983 2.983 0 0 1 11 6m-9.827-.142A1 1 0 0 0 .14 6.82l13.03 13.03a1 1 0 0 0 1.414-1.414L1.173 5.858z"/></svg>
+                </span>
+            {% endif %}
+
+            {% if player.user and player.user.has_biometrics %}
+                <span class="badge border-0 bg-transparent p-0 text-dark opacity-75 ms-1" title="Biometrie aktiv">
+                    <i class="bi bi-fingerprint" style="font-size: 0.9rem;"></i>
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- Formular zum Bearbeiten -->
+        <div class="col">
+            <form action="{{ url_for('edit_player', player_id=player.id) }}" method="POST" class="row g-2 align-items-center ajax-form" id="edit-form-{{ player.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="col-12 col-lg-4">
+                    <input type="text" class="form-control form-control-sm" name="player_name" value="{{ player.name }}" required>
+                    {% if not player.is_active %}
+                        {% if (player.balance_team1 is defined and (player.balance_team1 != 0 or player.general_balance_team1 != 0 or player.fine_balance_team1 != 0)) or (player.balance_team2 is defined and (player.balance_team2 != 0 or player.general_balance_team2 != 0 or player.fine_balance_team2 != 0)) %}
+                        <div class="small text-muted mt-1 lh-1" style="font-size: 0.7rem;">
+                            {% if player.balance_team1 != 0 or player.general_balance_team1 != 0 or player.fine_balance_team1 != 0 %}
+                                <div class="mb-1">
+                                    <span class="me-1">T1 Ges: <span class="{{ 'text-success' if player.balance_team1 > 0 else 'text-danger' }} fw-bold">{{ "%.2f"|format(player.balance_team1) }} €</span></span>
+                                    <span class="opacity-75">(Trikot: {{ "%.2f"|format(player.general_balance_team1) }} € | Strafe: {{ "%.2f"|format(player.fine_balance_team1) }} €)</span>
+                                </div>
+                            {% endif %}
+                            {% if player.balance_team2 != 0 or player.general_balance_team2 != 0 or player.fine_balance_team2 != 0 %}
+                                <div>
+                                    <span class="me-1">T2 Ges: <span class="{{ 'text-success' if player.balance_team2 > 0 else 'text-danger' }} fw-bold">{{ "%.2f"|format(player.balance_team2) }} €</span></span>
+                                    <span class="opacity-75">(Trikot: {{ "%.2f"|format(player.general_balance_team2) }} € | Strafe: {{ "%.2f"|format(player.fine_balance_team2) }} €)</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                <div class="col-12 col-lg-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">📱</span>
+                        <input type="tel" class="form-control" name="phone_number" value="{{ player.phone_number or '' }}" placeholder="Handynr.">
+                    </div>
+                </div>
+                <div class="col-12 col-lg-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">🎂</span>
+                        <input type="date" class="form-control" name="birthday" value="{{ player.birthday.strftime('%Y-%m-%d') if player.birthday else '' }}">
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Aktionen-Spalte (bricht auf kleineren Screens um) -->
+        <div class="col-12 col-lg-auto mt-2 mt-lg-0 text-end">
+            <div class="btn-group w-100 w-lg-auto">
+                {% if current_user.role == 'admin' and show_magic_link %}
+                <button type="button" class="btn btn-sm btn-outline-warning" onclick="generateMagicLink({{ player.id }})" title="Einladungs-Link erstellen">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-magic" viewBox="0 0 16 16"><path d="M9.5 2.672a.5.5 0 1 0 1 0 4.5 4.5 0 0 0-1 0Zm-6.617 7.746a.5.5 0 0 0 .707 0 12.85 12.85 0 0 0 1.83-2.145c.44-.657.94-1.545 1.545-2.61.018-.032.036-.064.054-.097.468-.838.93-1.638 1.4-2.288a.5.5 0 0 0-.814-.585c-.464.644-.925 1.439-1.391 2.275a50.966 50.966 0 0 1-.054.097H6.2c-.6 1.053-1.096 1.93-1.528 2.576a11.85 11.85 0 0 0-1.745 2.071.5.5 0 0 0 0 .707Z"/><path d="M11.237 8.528a11.85 11.85 0 0 0 2.091-1.764.5.5 0 0 0-.707-.707 12.85 12.85 0 0 0-2.146 1.83c-.655.438-1.543.937-2.608 1.542l-.097.055c-.838.468-1.637.93-2.288 1.399a.5.5 0 0 0 .585.814c.644-.464 1.439-.925 2.275-1.391.032-.018.065-.036.097-.054 1.053-.6 1.93-1.096 2.576-1.528a11.849 11.849 0 0 0 .224-.196Z"/></svg>
+                </button>
+                {% endif %}
+                <button type="button" class="btn btn-sm btn-primary manual-ajax-trigger flex-grow-1" data-form-id="edit-form-{{ player.id }}">Speichern</button>
+                
+                {% if player.is_active %}
+                {% if current_user.role == 'admin' %}
+                <form action="{{ url_for('deactivate_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" data-confirm="Soll {{ player.name }} wirklich archiviert werden?">Archivieren</button>
+                </form>
+                {% endif %}
+                {% else %}
+                {% if current_user.role == 'admin' %}
+                <form action="{{ url_for('reactivate_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-outline-success">Reaktivieren</button>
+                </form>
+                <form action="{{ url_for('delete_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" data-confirm="Soll {{ player.name }} wirklich ENDGÜLTIG gelöscht werden? Alle Daten gehen verloren!">Löschen</button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>

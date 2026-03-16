@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}Mannschaftskasse - Übersicht{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous" defer></script>
+{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --card-bg: #ffffff;
+        --card-shadow: var(--shadow-sm);
+        --primary-gradient: linear-gradient(135deg, #10b981, #059669);
+        --success-gradient: linear-gradient(135deg, #10b981, #0d9488);
+        --danger-gradient: linear-gradient(135deg, #ef4444, #be123c);
+        --warning-gradient: linear-gradient(135deg, #f59e0b, #d97706);
+        --info-gradient: linear-gradient(135deg, #0ea5e9, #0369a1);
+        --header-bg: #ffffff;
+        --text-sub: #6c757d;
+    }
+
+    html[data-theme="dark"] {
+        --card-bg: var(--bs-secondary-bg);
+        --header-bg: var(--bs-secondary-bg);
+        --text-sub: #94a3b8;
+    }
+
+    body {
+        background-color: var(--app-bg);
+    }
+
+    .page-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding: 2rem 0;
+        background: var(--header-bg);
+        border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+        box-shadow: var(--shadow-sm);
+        margin-top: -1.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .page-title {
+        font-weight: 800;
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-card {
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--border-radius-lg);
+        background: var(--card-bg);
+        box-shadow: var(--shadow-md);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
+        overflow: hidden;
+        height: 100%;
+        position: relative;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-hover);
+    }
+
+    .stat-card.primary::before { content: ""; position: absolute; left: 0; width: 4px; height: 100%; background: var(--primary-gradient); }
+    .stat-card.success::before { content: ""; position: absolute; left: 0; width: 4px; height: 100%; background: var(--success-gradient); }
+    .stat-card.warning::before { content: ""; position: absolute; left: 0; width: 4px; height: 100%; background: var(--warning-gradient); }
+    .stat-card.danger::before { content: ""; position: absolute; left: 0; width: 4px; height: 100%; background: var(--danger-gradient); }
+    .stat-card.info::before { content: ""; position: absolute; left: 0; width: 4px; height: 100%; background: var(--info-gradient); }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        color: white;
+    }
+
+    .bg-gradient-primary { background: var(--primary-gradient); }
+    .bg-gradient-success { background: var(--success-gradient); }
+    .bg-gradient-warning { background: var(--warning-gradient); }
+    .bg-gradient-danger { background: var(--danger-gradient); }
+    .bg-gradient-info { background: var(--info-gradient); }
+
+    .content-card {
+        border: 1px solid var(--bs-border-color);
+        border-radius: 16px;
+        background: var(--card-bg);
+        box-shadow: var(--card-shadow);
+    }
+    
+    .team-switch-btn {
+        border-radius: 50rem;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+    }
+
+    /* Table custom styles */
+    .table-modern th {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-sub);
+        border-bottom-width: 1px;
+    }
+</style>
+
+<!-- Header -->
+<div class="page-header">
+    <div class="container">
+        <h1 class="page-title display-5">Mannschaftskasse</h1>
+        <p class="text-muted mb-3">Finanzübersicht & Buchungen</p>
+        
+        <div class="d-flex justify-content-center gap-2 mb-3">
+            {% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'trikot_manager_1', 'viewer'] %}
+            <a class="btn btn-sm team-switch-btn {% if current_team == 'team1' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('kasse', team_name='team1') }}">1. Mannschaft</a>
+            {% endif %}
+            
+            {% if current_user.role in ['admin', 'auditor', 'strafen_manager_2', 'trikot_manager_2', 'viewer'] %}
+            <a class="btn btn-sm team-switch-btn {% if current_team == 'team2' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('kasse', team_name='team2') }}">2. Mannschaft</a>
+            {% endif %}
+        </div>
+        
+        <div class="d-inline-block">
+            {% include "_season_selector.html" %}
+        </div>
+    </div>
+</div>
+
+<div class="container pb-5">
+    <!-- Stats Row -->
+    <div class="row g-3 mb-4">
+        <!-- Balance -->
+        <div class="col-md-6 col-xl">
+            <div class="stat-card {% if balance >= 0 %}success{% else %}danger{% endif %} p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div style="min-width: 0;"> <!-- min-width: 0 for proper flex shrinking -->
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Kassenstand</h6>
+                        <h2 class="mb-0 fw-bold text-nowrap {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}" style="font-size: clamp(1.5rem, 4vw, 2rem);">
+                            {{ "%.2f"|format(balance) }} €
+                        </h2>
+                        <div class="mt-1 d-flex flex-column">
+                             <small class="text-muted">Aktuell verfügbar</small>
+                             {% if prev_season_str %}
+                                <small class="mt-1" style="font-size: 0.75rem;">
+                                    {% if balance_diff >= 0 %}
+                                        <span class="text-success fw-bold"><i class="bi bi-caret-up-fill"></i> +{{ "%.2f"|format(balance_diff) }} €</span>
+                                    {% else %}
+                                        <span class="text-danger fw-bold"><i class="bi bi-caret-down-fill"></i> {{ "%.2f"|format(balance_diff) }} €</span>
+                                    {% endif %}
+                                    <span class="text-muted ms-1">vs. Saison {{prev_season_str}}</span>
+                                </small>
+                             {% endif %}
+                        </div>
+                    </div>
+                    <div class="stat-icon {% if balance >= 0 %}bg-gradient-success{% else %}bg-gradient-danger{% endif %} ms-2 flex-shrink-0">
+                        <i class="bi bi-wallet2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Income -->
+        <div class="col-md-6 col-xl">
+            <div class="stat-card info p-4">
+                 <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Einnahmen</h6>
+                        <h2 class="mb-0 fw-bold text-main">{{ "%.2f"|format(income) }} €</h2>
+                        <small class="text-muted">In Saison {{ selected_season }}</small>
+                    </div>
+                    <div class="stat-icon bg-gradient-info">
+                        <i class="bi bi-graph-up-arrow"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expenses -->
+        <div class="col-md-6 col-xl">
+            <div class="stat-card warning p-4">
+                 <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Ausgaben</h6>
+                        <h2 class="mb-0 fw-bold text-main">{{ "%.2f"|format(total_expenses) }} €</h2>
+                         <small class="text-muted">Laufende Kosten</small>
+                    </div>
+                    <div class="stat-icon bg-gradient-warning">
+                        <i class="bi bi-cart-dash"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player Credit -->
+        <div class="col-md-6 col-xl">
+             <div class="stat-card primary p-4">
+                 <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                         <h6 class="text-muted text-uppercase small fw-bold mb-1">Spieler Guthaben</h6>
+                        <h2 class="mb-0 fw-bold text-primary">{{ "%.2f"|format(total_player_credit) }} €</h2>
+                        <small class="text-muted">Nicht ausgeben!</small>
+                    </div>
+                    <div class="stat-icon bg-gradient-primary">
+                        <i class="bi bi-piggy-bank"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+         <!-- Debts -->
+        <div class="col-md-6 col-xl">
+            <div class="stat-card danger p-4">
+                 <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Offene Schulden</h6>
+                        <h2 class="mb-0 fw-bold text-danger">{{ "%.2f"|format(total_debts) }} €</h2>
+                        <small class="text-muted">Von Spielern ausstehend</small>
+                    </div>
+                    <div class="stat-icon bg-gradient-danger">
+                         <i class="bi bi-person-exclamation"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts & Lists -->
+    <div class="row g-4">
+        <!-- Chart -->
+        <div class="col-lg-5">
+            <div class="content-card h-100">
+                <div class="card-header bg-transparent border-bottom py-3">
+                    <h5 class="card-title mb-0 fw-bold">Bilanz-Übersicht</h5>
+                </div>
+                <div class="card-body d-flex align-items-center justify-content-center p-4">
+                     <div style="width: 100%; max-width: 300px;">
+                        <canvas id="balanceChart"></canvas>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 text-center pb-3">
+                     <small class="text-muted">Verhältnis Einnahmen zu Ausgaben</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expenses List -->
+        <div class="col-lg-7">
+            <div class="content-card h-100">
+                 <div class="card-header bg-transparent border-bottom py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0 fw-bold">Gebuchte Ausgaben</h5>
+                    <span class="badge bg-light text-dark border rounded-pill">{{ expenses|length }} Positionen</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 450px; overflow-y: auto;">
+                        <table class="table table-hover table-striped align-middle mb-0 table-modern">
+                            <thead class="bg-light sticky-top">
+                                <tr>
+                                    <th class="ps-4 border-0 py-3">Datum</th>
+                                    <th class="border-0 py-3">Beschreibung</th>
+                                    <th class="text-end pe-4 border-0 py-3">Betrag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for expense in expenses %}
+                                <tr>
+                                    <td class="ps-4 text-muted small">{{ expense.date.strftime('%d.%m.%Y') }}</td>
+                                    <td class="fw-semibold text-dark">{{ expense.description }}</td>
+                                    <td class="text-end pe-4 text-danger fw-bold">-{{ "%.2f"|format(expense.amount) }} €</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center py-5 text-muted">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <i class="bi bi-check-circle fs-1 text-success opacity-50 mb-2"></i>
+                                            <span>Keine Ausgaben in dieser Saison.</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('balanceChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Einnahmen', 'Ausgaben'],
+                datasets: [{
+                    data: [{{ income }}, {{ total_expenses }}],
+                    backgroundColor: [
+                        '#20c997', // Success Green Gradient End
+                        '#ffc107'  // Warning Yellow
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            font: {
+                                family: "'Segoe UI', sans-serif",
+                                size: 12
+                            }
+                        }
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
