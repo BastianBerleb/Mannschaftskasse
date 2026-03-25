@@ -227,22 +227,22 @@
             {% endif %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('strafenkatalog') }}">Strafenkatalog</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('geburtstage') }}">Geburtstage</a></li>
-            {% if current_user.role in ['admin', 'auditor', 'viewer', 'trikot_manager_1', 'trikot_manager_2'] %}
+            {% if current_user.role in ['admin', 'viewer', 'trikot_manager_1', 'trikot_manager_2'] %}
 			<li class="nav-item"><a class="nav-link" href="{{ url_for('spieltag_log') }}">Spieltag-Log</a></li>
             {% endif %}
             {% if current_user.is_authenticated %}
-			{% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] and current_user.role != 'guest' %}
+			{% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] and current_user.role != 'guest' %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('schulden') }}">Gruppenerinnerung</a></li>
 			{% endif %}
             {% if current_user.role not in ['player', 'guest', 'viewer'] %}
-            <li class="nav-item" id="nav-item-admin">
-              <a class="nav-link" href="{{ url_for('admin') }}">
+            <li class="nav-item ms-lg-2" id="nav-item-admin">
+              <a class="nav-link fw-bold text-warning border border-warning rounded px-3 mt-1 mb-1 mt-lg-0 mb-lg-0 text-center" href="{{ url_for('admin') }}" style="background-color: rgba(255,193,7,0.1);">
                 {% if current_user.role in ['strafen_manager_1', 'strafen_manager_2'] %}
-                  Strafen-Verwaltung
+                  <i class="bi bi-file-earmark-ruled me-1"></i> Strafen-Verwaltung
                 {% elif current_user.role in ['trikot_manager_1', 'trikot_manager_2'] %}
-                  Trikotgeld-Verwaltung
+                  <i class="bi bi-basket me-1"></i> Trikot-Verwaltung
                 {% else %}
-                  Admin
+                  <i class="bi bi-gear-fill me-1"></i> Admin-Menü
                 {% endif %}
               </a>
             </li>
@@ -255,10 +255,6 @@
             {% endif %}
             {% endif %}
           </ul>        
-          <!-- Theme Toggle -->
-          <button id="theme-toggle" class="theme-toggle" title="Design wechseln" aria-label="Toggle dark/light mode">
-            <span id="theme-icon">☀️</span>
-          </button>
           <!-- PWA-Installation Button -->
           <button id="pwa-install-button" class="btn btn-outline-primary btn-sm rounded-pill fw-bold me-3 shadow-sm" style="display: none;">
             <span class="d-none d-md-inline">📱 App installieren</span>
@@ -308,23 +304,37 @@
               </ul>
             </div>
             {% else %}
-            <span class="badge bg-secondary me-3 align-self-center">Rolle: {{ current_user.role|replace('_', ' ')|title }}</span>
+                {% if current_user.secondary_role and current_user.secondary_role != 'none' %}
+                    <div class="d-flex align-items-center me-3">
+                        <span class="text-light me-2 small d-none d-md-inline" style="opacity: 0.8;">Arbeitsbereich wechseln:</span>
+                        {% if current_user.role == current_user.real_role %}
+                            <a href="{{ url_for('switch_role', target_role=current_user.secondary_role) }}" 
+                               class="btn btn-primary d-flex align-items-center shadow-sm" 
+                               style="border-radius: 20px; padding: 4px 15px; font-weight: 600; border: 2px solid rgba(255,255,255,0.2);">
+                               <i class="bi bi-arrow-left-right me-2"></i>
+                               <span class="me-2">{{ current_user.role|replace('_', ' ')|title }}</span>
+                               <i class="bi bi-arrow-right text-light mx-1" style="opacity: 0.5;"></i>
+                               <span class="text-light" style="opacity: 0.5;">{{ current_user.secondary_role|replace('_', ' ')|title }}</span>
+                            </a>
+                        {% else %}
+                            <a href="{{ url_for('switch_role', target_role='reset') }}" 
+                               class="btn btn-warning d-flex align-items-center shadow-sm" 
+                               style="border-radius: 20px; padding: 4px 15px; font-weight: 600; border: 2px solid rgba(255,255,255,0.2);">
+                               <i class="bi bi-arrow-left-right me-2 text-dark"></i>
+                               <span class="me-2 text-dark">{{ current_user.role|replace('_', ' ')|title }}</span>
+                               <i class="bi bi-arrow-right text-dark mx-1" style="opacity: 0.5;"></i>
+                               <span class="text-dark" style="opacity: 0.5;">{{ current_user.real_role|replace('_', ' ')|title }}</span>
+                            </a>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <span class="badge bg-secondary me-3 align-self-center">Rolle: {{ current_user.role|replace('_', ' ')|title }}</span>
+                {% endif %}
             {% endif %}
           {% endif %}
 
           <ul class="navbar-nav">
-            {% if current_user.is_authenticated %}
-              {% if current_user.role != 'guest' %}
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('change_password') }}">Passwort ändern</a></li>
-              {% endif %}
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('logout') }}" 
-                   onclick="return confirmLogout(event)">
-                  <span class="d-none d-md-inline">🚪 Logout</span>
-                  <span class="d-md-none">🚪</span>
-                </a>
-              </li>
-            {% else %}
+            {% if not current_user.is_authenticated %}
               <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>
             {% endif %}
           </ul>
@@ -430,13 +440,35 @@
     </div>
 
 <!-- Unauffälliger Footer mit Rechtstexten -->
-<footer class="mt-5 py-3 text-center text-muted border-top">
-    <div class="container">
-        <small>
-            &copy; 2026 Bastian Berleb &middot; 
-            <a href="{{ url_for('impressum') }}" class="text-decoration-none text-muted">Impressum</a> &middot; 
-            <a href="{{ url_for('datenschutz') }}" class="text-decoration-none text-muted">Datenschutz</a>
-        </small>
+<footer class="mt-5 py-3 border-top position-relative">
+    <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center">
+        <!-- Theme Toggle Left -->
+        <div class="mb-3 mb-md-0">
+            <button id="theme-toggle" class="btn btn-sm btn-outline-secondary rounded-pill d-flex align-items-center" title="Design wechseln" aria-label="Toggle dark/light mode">
+                <span id="theme-icon" class="me-2">☀️</span> <span>Darstellung</span>
+            </button>
+        </div>
+
+        <!-- Center Links -->
+        <div class="text-center text-muted mb-3 mb-md-0">
+            <small>
+                &copy; 2026 Bastian Berleb &middot; 
+                <a href="{{ url_for('impressum') }}" class="text-decoration-none text-muted">Impressum</a> &middot; 
+                <a href="{{ url_for('datenschutz') }}" class="text-decoration-none text-muted">Datenschutz</a>
+                {% if current_user.is_authenticated and current_user.role != 'guest' %}
+                &middot; <a href="{{ url_for('change_password') }}" class="text-decoration-none text-muted">Passwort ändern</a>
+                {% endif %}
+            </small>
+        </div>
+
+        <!-- Logout Right -->
+        <div>
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger rounded-pill fw-bold border-0 shadow-sm" style="background-color: rgba(220,53,69,0.1);">
+                🚪 Logout
+            </a>
+            {% endif %}
+        </div>
     </div>
 </footer>
 

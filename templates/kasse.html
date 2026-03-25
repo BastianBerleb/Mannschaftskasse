@@ -118,11 +118,11 @@
         <p class="text-muted mb-3">Finanzübersicht & Buchungen</p>
         
         <div class="d-flex justify-content-center gap-2 mb-3">
-            {% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'trikot_manager_1', 'viewer'] %}
+            {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1', 'viewer'] %}
             <a class="btn btn-sm team-switch-btn {% if current_team == 'team1' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('kasse', team_name='team1') }}">1. Mannschaft</a>
             {% endif %}
             
-            {% if current_user.role in ['admin', 'auditor', 'strafen_manager_2', 'trikot_manager_2', 'viewer'] %}
+            {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2', 'viewer'] %}
             <a class="btn btn-sm team-switch-btn {% if current_team == 'team2' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('kasse', team_name='team2') }}">2. Mannschaft</a>
             {% endif %}
         </div>

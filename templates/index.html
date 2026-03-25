@@ -250,8 +250,8 @@
 
 <!-- NEU: Geburtstags-Anzeige (Mit Bildern) -->
 {% if birthday_players %}
-<div class="alert alert-warning text-center shadow-sm border-0 rounded-4 mb-4" role="alert" style="background: linear-gradient(135deg, #fff3cd, #ffe69c);">
-  <h4 class="alert-heading mb-3 h5">🎂 Happy Birthday! 🎉</h4>
+<div class="alert alert-warning text-center shadow-sm border-0 rounded-4 mb-4" role="alert" style="background: linear-gradient(135deg, #fff3cd, #ffe69c); color: #533f03 !important;">
+  <h4 class="alert-heading mb-3 h5" style="color: inherit !important;">🎂 Happy Birthday! 🎉</h4>
   <div class="d-flex justify-content-center gap-3 mb-2 flex-wrap">
       {% for p in birthday_players %}
         <div class="d-flex flex-column align-items-center">
@@ -264,7 +264,7 @@
                     </div>
                 {% endif %}
              </div>
-             <small class="fw-bold text-dark" style="font-size: 0.8rem;">{{ p.name }}</small>
+             <small class="fw-bold" style="font-size: 0.8rem; color: inherit !important;">{{ p.name }}</small>
         </div>
       {% endfor %}
   </div>

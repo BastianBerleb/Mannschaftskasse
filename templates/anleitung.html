@@ -89,14 +89,14 @@
     </div>
 
     <!-- 3. Anleitung für Strafen-Manager -->
-    {% if current_user.is_authenticated and current_user.role in ['strafen_manager_1', 'strafen_manager_2', 'admin', 'auditor'] %}
+    {% if current_user.is_authenticated and current_user.role in ['strafen_manager_1', 'strafen_manager_2', 'admin', 'viewer'] %}
     <div class="accordion-item">
         <h2 class="accordion-header" id="headingManager">
-            <button class="accordion-button {% if current_user.role not in ['admin', 'auditor'] %}show{% else %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManager" aria-expanded="{% if current_user.role not in ['admin', 'auditor'] %}true{% else %}false{% endif %}" aria-controls="collapseManager">
+            <button class="accordion-button {% if current_user.role not in ['admin', 'viewer'] %}show{% else %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManager" aria-expanded="{% if current_user.role not in ['admin', 'viewer'] %}true{% else %}false{% endif %}" aria-controls="collapseManager">
                 Für Manager & Kassenwarte
             </button>
         </h2>
-        <div id="collapseManager" class="accordion-collapse collapse {% if current_user.role not in ['admin', 'auditor'] %}show{% endif %}" aria-labelledby="headingManager" data-bs-parent="#anleitungAccordion">
+        <div id="collapseManager" class="accordion-collapse collapse {% if current_user.role not in ['admin', 'viewer'] %}show{% endif %}" aria-labelledby="headingManager" data-bs-parent="#anleitungAccordion">
             <div class="accordion-body">
                 <p>Als Manager hast du erweiterten Zugriff auf die Kassenführung deiner Mannschaft.</p>
 
@@ -155,15 +155,15 @@
     </div>
     {% endif %}
     
-    <!-- 5. Anleitung für Auditoren -->
-    {% if current_user.is_authenticated and current_user.role == 'auditor' %}
+    <!-- 5. Anleitung für Viewer -->
+    {% if current_user.is_authenticated and current_user.role == 'viewer' %}
     <div class="accordion-item">
-        <h2 class="accordion-header" id="headingAuditor">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAuditor" aria-expanded="false" aria-controls="collapseAuditor">
-                Für Auditoren (Prüfer)
+        <h2 class="accordion-header" id="headingViewer">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseViewer" aria-expanded="false" aria-controls="collapseViewer">
+                Für Viewer (Prüfer)
             </button>
         </h2>
-        <div id="collapseAuditor" class="accordion-collapse collapse" aria-labelledby="headingAuditor" data-bs-parent="#anleitungAccordion">
+        <div id="collapseViewer" class="accordion-collapse collapse" aria-labelledby="headingViewer" data-bs-parent="#anleitungAccordion">
             <div class="accordion-body">
                 <p>Modus: <strong>Nur-Lesen</strong></p>
                 <ul>

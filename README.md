@@ -14,7 +14,7 @@ Eine moderne, webbasierte Plattform zur Verwaltung der Mannschaftskasse des TSV 
 *   **⚖️ Schulden & Guthaben:** Automatische Berechnung der Kontostände inklusive grafischer Auswertung.
 *   **🔔 Benachrichtigungen:** Unterstützung für Push-Benachrichtigungen und WhatsApp-Integration (geplant/in Arbeit).
 *   **🎂 Geburtstagskalender:** Übersicht über alle Geburtstage im Team.
-*   **🛡️ Sicherheit:** Rollenbasierte Zugriffskontrolle (Mitarbeiter, Manager, Auditor), Passwort-Hashing und geschützte API-Endpunkte.
+*   **🛡️ Sicherheit:** Rollenbasierte Zugriffskontrolle (Mitarbeiter, Manager, Viewer), Passwort-Hashing und geschützte API-Endpunkte.
 *   **☁️ Google Drive Backup:** Integrierte Datensicherung der SQLite-Datenbank direkt in die Cloud.
 
 ## 🛠️ Tech-Stack

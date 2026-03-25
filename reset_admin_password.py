@@ -33,7 +33,7 @@ class AdminUser(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
-    role = db.Column(db.String(80), nullable=False, default='auditor')
+    role = db.Column(db.String(80), nullable=False, default='viewer')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -113,7 +113,7 @@ def create_new_admin():
     print("\nRolle auswählen:")
     print("1. admin (Vollzugriff)")
     print("2. strafen_manager (Kann Strafen verwalten)")
-    print("3. auditor (Nur Lesezugriff)")
+    print("3. viewer (Vereinsverantwortlicher - Nur Lesezugriff)")
     
     while True:
         choice = input("Rolle wählen (1-3): ").strip()
@@ -124,7 +124,7 @@ def create_new_admin():
             role = "strafen_manager"
             break
         elif choice == "3":
-            role = "auditor"
+            role = "viewer"
             break
         else:
             print("❌ Ungültige Auswahl!")

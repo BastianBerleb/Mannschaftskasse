@@ -165,17 +165,17 @@
       {% endif %}
 
       <!-- 9. Spieler -->
-      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'auditor'] %}
+      {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] %}
       <button class="nav-link" id="nav-players-tab" data-bs-toggle="tab" data-bs-target="#nav-players" type="button" role="tab">Spieler</button>
       {% endif %}
 
       <!-- 10. Strafenkatalog -->
-      {% if current_user.role in ['admin', 'auditor', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+      {% if current_user.role in ['admin', 'viewer', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
       <button class="nav-link" id="nav-fines-catalog-tab" data-bs-toggle="tab" data-bs-target="#nav-fines-catalog" type="button" role="tab">Strafenkatalog</button>
       {% endif %}
 
       <!-- Setup -->
-      {% if current_user.role in ['admin', 'auditor'] %}
+      {% if current_user.role in ['admin', 'viewer'] %}
       <button class="nav-link" id="nav-setup-tab" data-bs-toggle="tab" data-bs-target="#nav-setup" type="button" role="tab">Setup</button>
       {% endif %}
       
@@ -194,7 +194,7 @@
                 {% if show_all_logs %}Alle Buchungen{% else %}Letzte Buchungen (max. 150){% endif %}
             </h5>
             <div class="d-flex gap-2">
-                 {% if current_user.role in ['admin', 'auditor'] %}
+                 {% if current_user.role in ['admin', 'viewer'] %}
                  <a href="{{ url_for('audit_log') }}" class="btn btn-outline-dark btn-sm">🔒 Audit Log</a>
                  {% endif %}
                 {% if not show_all_logs %}
@@ -299,7 +299,7 @@
       
       <!-- Spielgebühr -->
       <div class="tab-pane fade" id="nav-game-fee" role="tabpanel">
-        <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+        <fieldset {% if current_user.role == 'viewer' %}disabled{% endif %}>
           
           
           <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1142,14 +1142,14 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="col-md-2"><strong>{{ user.username }}</strong></div>
                     <div class="col-md-2">
-                         <label class="form-label small text-muted mb-0">Rolle</label>
+                         <label class="form-label small text-muted mb-0">Aufgabenbereich 1</label>
                          <select name="role" class="form-select form-select-sm">
                             {% for role in valid_roles %}<option value="{{ role }}" {% if user.role == role %}selected{% endif %}>{{ role.replace('_', ' ')|title }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-md-2">
-                         <label class="form-label small text-muted mb-0">Quick-Switch</label>
-                         <select name="secondary_role" class="form-select form-select-sm" title="Schnellzugriff-Rolle">
+                         <label class="form-label small text-muted mb-0">Aufgabenbereich 2</label>
+                         <select name="secondary_role" class="form-select form-select-sm" title="Zweiter Aufgabenbereich">
                             <option value="none" {% if not user.secondary_role %}selected{% endif %}>- Keine -</option>
                             {% for role in valid_roles %}<option value="{{ role }}" {% if user.secondary_role == role %}selected{% endif %}>{{ role.replace('_', ' ')|title }}</option>{% endfor %}
                         </select>

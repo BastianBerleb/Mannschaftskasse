@@ -269,7 +269,7 @@
         <div class="tab-content" id="financeTabContent">
             <!-- EINZAHLUNG -->
             <div class="tab-pane fade {{ 'show active' if active_tab == 'payment' }}" id="pills-payment" role="tabpanel">
-                <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+                <fieldset {% if current_user.role == 'viewer' %}disabled{% endif %}>
                   <div class="row"><div class="col-lg-8 mx-auto">
                   <h5 class="mb-3">Einzahlung verbuchen</h5>
                   <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form p-3 border rounded bg-white">
@@ -298,13 +298,9 @@
                           </div>
                           <div class="col-12">
                               <label class="form-label small text-muted">Verwendungszweck</label>
-                              <select name="payment_category" class="form-select">
-                                  <option value="standard" selected>Standard (Haupteinzahlung: Verrechnet Geldstrafen)</option>
-                                  <option value="game_fee">Trikotgeld (Separat: Begleicht nur Trikotgeld)</option>
-                              </select>
-                              <div class="form-text small">
-                                <strong>Standard:</strong> Begleicht automatisch Strafen, älteste zuerst.<br>
-                                <strong>Trikotgeld:</strong> Nur für separate Trikot-Kasse.
+                              <input type="hidden" name="payment_category" value="standard">
+                              <div class="form-text small mb-2 text-primary">
+                                <i class="bi bi-info-circle"></i> Info: Jede Einzahlung tilgt <strong>immer zuerst offene Strafen</strong>. Der restliche Betrag geht ins Guthaben (Trikotgeld).
                               </div>
                           </div>
                           <div class="col-12">
@@ -322,7 +318,7 @@
 
             <!-- STRAFE (KATALOG) -->
             <div class="tab-pane fade {{ 'show active' if active_tab == 'fine' }}" id="pills-fine" role="tabpanel">
-                <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+                <fieldset {% if current_user.role == 'viewer' %}disabled{% endif %}>
                   <div class="row"><div class="col-lg-8 mx-auto">
                   <h5 class="mb-3">Strafe aus Katalog zuweisen</h5>
                   <form action="{{ url_for('add_transaction') }}" method="POST" class="ajax-form p-3 border rounded bg-white">
@@ -369,7 +365,7 @@
 
             <!-- INDIVIDUELLE STRAFE -->
             <div class="tab-pane fade" id="pills-custom-fine" role="tabpanel">
-                 <fieldset {% if current_user.role == 'auditor' %}disabled{% endif %}>
+                 <fieldset {% if current_user.role == 'viewer' %}disabled{% endif %}>
                   <div class="row"><div class="col-lg-8 mx-auto">
                   <h5 class="mb-3">Individuelle Strafe</h5>
                   <form action="{{ url_for('add_custom_fine') }}" method="POST" class="ajax-form p-3 border rounded bg-white">
@@ -435,6 +431,9 @@
                                     {% endif %}
                                 </div>
                                 <div class="card-body p-2" id="body-team1" {% if locked_t1 %}style="opacity:0.6;pointer-events:none;"{% endif %}>
+                                    {% if game_already_booked_t1 %}
+                                    <div class="alert alert-warning py-1 small mb-2">Hinweis: FuPa-Spiel ist scheinbar schon bebucht!</div>
+                                    {% endif %}
                                     <input type="date" name="date_team1" id="input_date_team1" class="form-control form-control-sm mb-2" value="{{ latest_game_date_team1 or today.strftime('%Y-%m-%d') }}">
                                     <input type="text" name="opponent_team1" id="input_opp_team1" class="form-control form-control-sm" value="{{ latest_game_opponent_team1 or '' }}" placeholder="Gegner">
                                 </div>
@@ -458,6 +457,9 @@
                                     {% endif %}
                                 </div>
                                 <div class="card-body p-2" id="body-team2" {% if locked_t2 %}style="opacity:0.6;pointer-events:none;"{% endif %}>
+                                    {% if game_already_booked_t2 %}
+                                    <div class="alert alert-warning py-1 small mb-2">Hinweis: FuPa-Spiel ist scheinbar schon bebucht!</div>
+                                    {% endif %}
                                     <input type="date" name="date_team2" id="input_date_team2" class="form-control form-control-sm mb-2" value="{{ latest_game_date or today.strftime('%Y-%m-%d') }}">
                                     <input type="text" name="opponent_team2" id="input_opp_team2" class="form-control form-control-sm" value="{{ latest_game_opponent or '' }}" placeholder="Gegner">
                                 </div>
@@ -774,7 +776,7 @@
                 <div class="d-flex justify-content-between mb-2">
                     <h5>Log</h5>
                     <div class="d-flex gap-2">
-                        {% if current_user.role in ['admin', 'auditor'] %}
+                        {% if current_user.role in ['admin', 'viewer'] %}
                         <a href="{{ url_for('audit_log') }}" class="btn btn-outline-dark btn-sm">🔒 Audit Log</a>
                         {% endif %}
                         {% if not show_all_logs %}
@@ -893,6 +895,37 @@
                         </div>
                      </div>
                      
+                     <hr>
+                     
+                     <h6>Allgemeine Einstellungen</h6>
+                     <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="small text-muted">Sitzungsdauer (Tage)</label>
+                            <input type="number" name="session_lifetime_days" id="session_lifetime_days" class="form-control form-control-sm" value="{{ settings.get('session_lifetime_days', '3650') }}" min="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small text-muted">Trikotgeld Betrag (€)</label>
+                            <input type="number" step="0.01" name="game_fee" id="game_fee" class="form-control form-control-sm" value="{{ settings.get('game_fee', '3.00') }}">
+                        </div>
+                     </div>
+                     
+                     <h6>Strafen-Verdopplung</h6>
+                     <p class="text-muted small mb-2">Automatische Verdopplung von Strafen nach Ablauf der Frist (z.B. nach 4 Wochen).</p>
+                     <div class="row g-2 mb-3">
+                         <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="doubling_active_team1" name="doubling_active_team1" {% if settings.get('doubling_active_team1') == '1' %}checked{% endif %}>
+                                <label class="form-check-label small" for="doubling_active_team1">Aktiv für Team 1</label>
+                            </div>
+                         </div>
+                         <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="doubling_active_team2" name="doubling_active_team2" {% if settings.get('doubling_active_team2') == '1' %}checked{% endif %}>
+                                <label class="form-check-label small" for="doubling_active_team2">Aktiv für Team 2</label>
+                            </div>
+                         </div>
+                     </div>
+
                      <!-- Add Guest Link Button -->
                      <button type="button" class="btn btn-outline-secondary btn-sm mb-2" onclick="generateGuestLink()">Gast-Link generieren</button>
                      <input type="text" id="guest-link-output" class="form-control form-control-sm mb-3" readonly>
@@ -1045,11 +1078,11 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                              <div class="col-3 fw-bold">{{ user.username }}</div>
                              <div class="col-2">
-                               <select name="role" class="form-select form-select-sm" title="Haupt-Rolle">{% for r in valid_roles %}<option value="{{ r }}" {% if user.role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+                               <select name="role" class="form-select form-select-sm" title="Aufgabenbereich 1">{% for r in valid_roles %}<option value="{{ r }}" {% if user.role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
                              </div>
                              <div class="col-2">
-                               <select name="secondary_role" class="form-select form-select-sm" title="Quick-Switch (Alternativ-Rolle)">
-                                   <option value="" {% if not user.secondary_role %}selected{% endif %}>- Quick -</option>
+                               <select name="secondary_role" class="form-select form-select-sm" title="Aufgabenbereich 2">
+                                   <option value="" {% if not user.secondary_role %}selected{% endif %}>- Keine -</option>
                                    {% for r in valid_roles %}<option value="{{ r }}" {% if user.secondary_role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
                              </div>
                              <div class="col-3">
@@ -1372,6 +1405,108 @@ function toggleMassCheckboxes(checked) {
        initTS('custom_fine_player_select');
        // initTS('fine_catalog_select'); // Disabled: Conflicts with Team-Filter JS
     });
+</script>
+
+<script>
+document.addEventListener('submit', async function(e) {
+    const form = e.target;
+    if (!form || !form.action) return;
+    
+    const action = form.action;
+    if (action.includes('/add-transaction') || 
+        action.includes('/add-custom-fine') || 
+        action.includes('/add-payment') || 
+        action.includes('/add-payout')) {
+            
+        if (form.dataset.duplicateChecked === 'true') {
+            return; // Already checked, let it continue
+        }
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        const submitBtn = e.submitter || form.querySelector('button[type="submit"]');
+        const originalText = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Lade...';
+        }
+
+        try {
+            const formData = new FormData(form);
+            let txType = '';
+            if (action.includes('add-transaction')) txType = 'fine';
+            else if (action.includes('add-custom-fine')) txType = 'custom_fine';
+            else if (action.includes('add-payment')) txType = 'payment';
+            else if (action.includes('add-payout')) txType = 'payout';
+
+            let amnt = formData.get('amount');
+            if (!amnt && txType === 'fine') {
+               // Try to extract amount from fine select if needed, or backend can handle
+            }
+
+            const payload = {
+                player_id: formData.get('player_id'),
+                date: formData.get('date') || new Date().toISOString().split('T')[0],
+                type: txType,
+                fine_id: formData.get('fine_id'),
+                description: formData.get('description'),
+                amount: amnt
+            };
+            
+            const response = await fetch('/admin/api/check_duplicate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await response.json();
+            if (data.exists) {
+                if (confirm("Diese Buchung existiert möglicherweise bereits! Wirklich erneut buchen?")) {
+                    form.dataset.duplicateChecked = "true";
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.click();
+                    } else {
+                        form.submit();
+                    }
+                    setTimeout(() => form.dataset.duplicateChecked = "false", 100);
+                } else {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
+                    }
+                }
+            } else {
+                form.dataset.duplicateChecked = "true";
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.click();
+                } else {
+                    form.submit();
+                }
+                setTimeout(() => form.dataset.duplicateChecked = "false", 100);
+            }
+        } catch (err) {
+            console.error("Fehler beim Duplicate Check:", err);
+            // Fallback
+            form.dataset.duplicateChecked = "true";
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.click();
+            } else {
+                form.submit();
+            }
+            setTimeout(() => form.dataset.duplicateChecked = "false", 100);
+        }
+    }
+}, true); // Capture phase
 </script>
 {% endblock %}
 {% block head %}
