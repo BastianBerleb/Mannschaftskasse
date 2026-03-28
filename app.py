@@ -65,6 +65,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 import re
 from functools import wraps
 import click
@@ -159,6 +160,10 @@ class WhiteNoiseWithHeaders(WhiteNoise):
 # --- ZEITZONEN-KONFIGURATION ---
 GERMAN_TZ = timezone('Europe/Berlin')
 
+def get_local_now():
+    """Gibt die aktuelle Zeit in der deutschen Zeitzone zurück. Ersetzt utcnow/now für Konsistenz."""
+    return datetime.now(GERMAN_TZ)
+
 # --- Konfiguration ---
 try:
     from dotenv import load_dotenv
@@ -180,7 +185,26 @@ if not secret_key:
     raise RuntimeError("KRITISCHER FEHLER: Kein SECRET_KEY in der `.env` oder in den Umgebungsvariablen gefunden. Die App wird nicht gestartet, um Datenverlust bei Sessions zu vermeiden.")
 
 app.config['SECRET_KEY'] = secret_key
+
+# --- SECURITY & PRODUCTION FLAGS ---
+# SQLite Threading für Gunicorn & Worker
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {
+        'check_same_thread': False,
+        'timeout': 15
+    }
+}
+# HTTPS & Cookie Security für Production
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
+
 # --- KORREKTE WHITENOISE KONFIGURATION ---
+# ProxyFix für korrekte IPs und HTTPS-Schemata hinter Reverse Proxy (z.B. Nginx/Gunicorn)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # Sage WhiteNoise, wo die statischen Dateien auf der Festplatte liegen
 static_folder_root = os.path.join(basedir, 'static')
 # Sage WhiteNoise, dass es auf Anfragen unter der URL /static lauschen soll
@@ -202,7 +226,7 @@ csrf = CSRFProtect(app)
 # --- AUDIT LOG MODEL ---
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=get_local_now)
     user_name = db.Column(db.String(100)) # Name des Users, der die Aktion ausführte
     action = db.Column(db.String(50))     # z.B. "CREATE", "UPDATE", "DELETE"
     module = db.Column(db.String(50))     # z.B. "PLAYER", "TRANSACTION", "SETTINGS"
@@ -280,7 +304,7 @@ def get_deadline(tx_date):
     Nächster Freitag, der mindestens 14 Tage nach dem Transaktionsdatum liegt.
     """
     if not tx_date:
-        return datetime.utcnow().date()
+        return get_local_now().date()
         
     target = tx_date + timedelta(days=14)
     while target.weekday() != 4: # 4 = Friday
@@ -430,7 +454,7 @@ def trigger_daily_birthday_notifications():
     Wird in der index-Route aufgerufen.
     """
     try:
-        today_str = datetime.now(GERMAN_TZ).strftime('%Y-%m-%d')
+        today_str = get_local_now().strftime('%Y-%m-%d')
         
         # Check setting
         last_check = KasseSetting.query.filter_by(key='last_birthday_notify_date').first()
@@ -447,7 +471,7 @@ def trigger_daily_birthday_notifications():
         db.session.commit()
         
         # 2. Logic (from worker_scheduler.py)
-        today = datetime.now(GERMAN_TZ).date()
+        today = get_local_now().date()
         all_players = Player.query.filter_by(is_active=True).all()
         birthday_kids = []
         
@@ -671,7 +695,7 @@ def get_latest_fupa_game_data(season_str):
             fupa_logger.warning("Keine Spiele für Team 2 in den JSON-Daten gefunden.")
             # return fupa_data  <-- REMOVED: Don't stop here, try Team 1!
             
-        today = datetime.now().date()
+        today = get_local_now().date()
         # Safe selection logic even if team2_items is empty
         team2_match = next((g for g in team2_items if g.get('kickoff') and today - timedelta(days=7) <= datetime.fromisoformat(g.get('kickoff').replace('Z', '+00:00')).date() <= today), team2_items[0] if team2_items else None)
         
@@ -740,7 +764,7 @@ def get_latest_fupa_game_data(season_str):
             parsed_t1.sort(key=lambda x: x[1], reverse=True)
             
             team1_match = None
-            today_dt = datetime.now().date()
+            today_dt = get_local_now().date()
 
             # STRATEGIE 1: Matching mit Team 2 (falls vorhanden)
             if team2_kickoff:
@@ -833,7 +857,7 @@ def update_fupa_cache_in_background(season_str):
         # **NEUE, bessere Bedingung:**
         # Wir aktualisieren den Cache, sobald ein Spieldatum für Team 1 ODER Team 2 gefunden wurde.
         if live_fupa_data and (live_fupa_data.get('team2_date') or live_fupa_data.get('team1_date')):
-            new_ts = datetime.utcnow()
+            new_ts = get_local_now()
             
             # Merge mit vorherigem Cache, um leere Daten (z.B. durch Rate-Limits) abzufangen
             old_data = fupa_cache.get("data")
@@ -894,7 +918,7 @@ def get_available_seasons():
     max_date_tx = db.session.query(func.max(Transaction.date)).scalar()
     max_date_exp = db.session.query(func.max(TeamExpense.date)).scalar()
     all_dates = [d for d in [min_date_tx, min_date_exp, max_date_tx, max_date_exp] if d]
-    if not all_dates: return [get_season_for_date(datetime.utcnow().date())]
+    if not all_dates: return [get_season_for_date(get_local_now().date())]
     earliest_date = min(all_dates)
     latest_date = max(all_dates)
     seasons = set()
@@ -904,7 +928,7 @@ def get_available_seasons():
     while loop_date <= latest_date:
         seasons.add(get_season_for_date(loop_date))
         loop_date = date(loop_date.year + 1, 6, 1)
-    seasons.add(get_season_for_date(datetime.utcnow().date()))
+    seasons.add(get_season_for_date(get_local_now().date()))
     return sorted(list(seasons), reverse=True)
 
 # --- Datenbank-Modelle ---
@@ -958,7 +982,7 @@ class WebAuthnCredential(db.Model):
     public_key = db.Column(db.LargeBinary, nullable=False)
     sign_count = db.Column(db.Integer, default=0)
     transports = db.Column(db.String(255), nullable=True) # JSON list of transports
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_local_now)
     user_id = db.Column(db.Integer, db.ForeignKey('admin_user.id'), nullable=False)
 
 @login_manager.user_loader
@@ -1169,7 +1193,7 @@ class Fine(db.Model):
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date(), index=True)
+    date = db.Column(db.Date, nullable=False, default=lambda: get_local_now().date(), index=True)
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     team = db.Column(db.String(50), nullable=True, index=True)  # Team 1 oder Team 2
@@ -1177,16 +1201,16 @@ class Transaction(db.Model):
     amount_settled = db.Column(db.Float, default=0.0) # Bei Strafen: Bereits bezahlter Betrag
     doubled_by_id = db.Column(db.Integer, default=None) # ID der Verdopplungs-Transaktion
     created_by = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=get_local_now)
 
 class KistlTransaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False, index=True)
-    date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date(), index=True)
+    date = db.Column(db.Date, nullable=False, default=lambda: get_local_now().date(), index=True)
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
     created_by = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=get_local_now)
 
 class PendingGameFee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1195,17 +1219,17 @@ class PendingGameFee(db.Model):
     opponent = db.Column(db.String(100), nullable=False)
     player_ids_json = db.Column(db.Text, nullable=False) # List of IDs as JSON string
     created_by = db.Column(db.String(80))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=get_local_now)
 
 class TeamExpense(db.Model):
     __tablename__ = 'team_expense_real' # Um Konflikte zu vermeiden
     id = db.Column(db.Integer, primary_key=True); 
-    date = db.Column(db.Date, nullable=False, default=lambda: datetime.utcnow().date())
+    date = db.Column(db.Date, nullable=False, default=lambda: get_local_now().date())
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     team = db.Column(db.String(50), nullable=False, default='team2')
     created_by = db.Column(db.String(80), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=get_local_now)
 
 class KasseSetting(db.Model):
     __tablename__ = 'kasse_settings'
@@ -1217,7 +1241,7 @@ class PushLog(db.Model):
     """Protokolliert jeden Push-Benachrichtigungsversuch."""
     __tablename__ = 'push_log'
     id = db.Column(db.Integer, primary_key=True)
-    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    sent_at = db.Column(db.DateTime, default=get_local_now)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=True)
     player = db.relationship('Player', foreign_keys=[player_id])
     endpoint_fragment = db.Column(db.String(100))
@@ -1252,7 +1276,7 @@ def ensure_schema():
 
 @app.before_request
 def load_season_data():
-    default_season = get_season_for_date(datetime.utcnow().date())
+    default_season = get_season_for_date(get_local_now().date())
     g.current_season_str = request.args.get('season', default_season)
     g.start_date, g.end_date = get_season_daterange(g.current_season_str)
     
@@ -1293,13 +1317,13 @@ def inject_seasons():
 
 @app.context_processor
 def utility_processor():
-    return dict(quote_plus=quote_plus, now=datetime.utcnow(), get_deadline=get_deadline)
+    return dict(quote_plus=quote_plus, now=get_local_now(), get_deadline=get_deadline)
 
 # --- Öffentliche Routen ---
 @app.route('/')
 @login_required
 def index():
-    today = datetime.utcnow().date()
+    today = get_local_now().date()
     
     # NEU: Geburtstags-Push-Trigger (Hotfix für fehlende Worker-Benachrichtigung)
     trigger_daily_birthday_notifications()
@@ -1743,7 +1767,7 @@ def player_detail(player_id):
                  if tx.doubled_by_id is None:
                      entry['is_fine_unpaid'] = True
                      entry['deadline'] = get_deadline(tx.date)
-                     entry['days_left'] = (entry['deadline'] - datetime.utcnow().date()).days
+                     entry['days_left'] = (entry['deadline'] - get_local_now().date()).days
         
         processed_transactions.append(entry)
         
@@ -2216,7 +2240,7 @@ def generate_magic_link(player_id):
     
     # Generate new token with expiry (7 Tage)
     token_core = secrets.token_urlsafe(32)
-    expiry = int((datetime.utcnow() + timedelta(days=7)).timestamp())
+    expiry = int((get_local_now() + timedelta(days=7)).timestamp())
     full_token = f"{token_core}|{expiry}"
     
     user.login_token = full_token
@@ -2239,7 +2263,7 @@ def magic_login(token):
                 parts = token.split('|')
                 if len(parts) == 2:
                     expiry = int(parts[1])
-                    if datetime.utcnow().timestamp() < expiry:
+                    if get_local_now().timestamp() < expiry:
                         valid = True
             else:
                 valid = False 
@@ -2298,7 +2322,7 @@ def generate_guest_link():
     
     # Speichern in Settings mit Timestamp
     # Format: token|expiry_timestamp
-    expiry = datetime.utcnow() + timedelta(days=7)
+    expiry = get_local_now() + timedelta(days=7)
     token_value = f"{token}|{expiry.timestamp()}"
     
     setting = KasseSetting.query.filter_by(key='guest_token').first()
@@ -2333,7 +2357,7 @@ def guest_login(token):
         log_audit("LOGIN", "GUEST_FAILED", "Gast-Login gescheitert (Token mismatch).")
         return redirect(url_for('login'))
         
-    if datetime.utcnow().timestamp() > float(expiry_ts):
+    if get_local_now().timestamp() > float(expiry_ts):
         flash('Dieser Gast-Link ist abgelaufen.', 'danger')
         log_audit("LOGIN", "GUEST_FAILED", "Gast-Login gescheitert (Token abgelaufen).")
         return redirect(url_for('login'))
@@ -2505,7 +2529,7 @@ def generate_season_report():
         # 2. HTML-Template mit den Daten rendern
         report_context = {
             "season_str": g.current_season_str,
-            "generation_date": datetime.now(),
+            "generation_date": get_local_now(),
             "kasse_start": kasse_balance_at_season_start,
             "kasse_start_t1": kasse_balance_at_season_start_t1,
             "kasse_start_t2": kasse_balance_at_season_start_t2,
@@ -2528,7 +2552,7 @@ def generate_season_report():
         pdf_bytes = HTML(string=html_string).write_pdf()
         
         # 4. PDF als Datei-Download zurückgeben
-        filename = f"Saisonbericht_{g.current_season_str.replace('/', '-')}_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+        filename = f"Saisonbericht_{g.current_season_str.replace('/', '-')}_{get_local_now().strftime('%Y-%m-%d')}.pdf"
         
         log_audit("DOWNLOAD", "SEASON_REPORT", f"Saisonbericht für '{g.current_season_str}' heruntergeladen.")
         return send_file(
@@ -2549,7 +2573,7 @@ def generate_season_report():
 def settle_kistl_cockpit(player_id):
     player = Player.query.get_or_404(player_id)
     try:
-        tx = KistlTransaction(player_id=player.id, description="Kistl beglichen (via Cockpit)", amount=1, date=datetime.utcnow().date(), created_by=current_user.username)
+        tx = KistlTransaction(player_id=player.id, description="Kistl beglichen (via Cockpit)", amount=1, date=get_local_now().date(), created_by=current_user.username)
         db.session.add(tx)
         log_audit("UPDATE", "KISTL_SETTLEMENT", f"Kistl für {player.name} beglichen (Cockpit-Schnellauswahl).")
         flash(f'Ein Kistl für {player.name} wurde als beglichen markiert.', 'success')
@@ -2916,7 +2940,7 @@ def _generate_debt_image_bytes(filter_mode):
         subtitle = "TSV Alteglofsheim · Mannschaftskasse"
         draw.text((text_start_x, logo_y + 34 * S), subtitle, font=font_date, fill=(148, 163, 184))
         
-        date_str = datetime.now().strftime('%d.%m.%Y')
+        date_str = get_local_now().strftime('%d.%m.%Y')
         try: date_w = font_date.getlength(date_str)
         except: date_w = 100 * S
         draw.text((width - padding_x - date_w, logo_y + 10 * S), date_str, font=font_date, fill=(148, 163, 184))
@@ -3314,7 +3338,7 @@ def force_update_fupa_cache(season_str):
     live_fupa_data = get_latest_fupa_game_data(season_str)
     
     if live_fupa_data and (live_fupa_data.get('team2_date') or live_fupa_data.get('team1_date')):
-        new_ts = datetime.utcnow()
+        new_ts = get_local_now()
         
         # Merge mit vorherigem Cache, um leere Daten abzufangen
         old_data = fupa_cache.get("data")
@@ -3385,7 +3409,7 @@ def admin():
     
     # Fupa-Daten im Hintergrund aktualisieren (diese Logik bleibt unverändert)
     cache_duration = timedelta(hours=4)
-    now = datetime.utcnow()
+    now = get_local_now()
     
     # RELOAD from disk first (Fix for multi-worker setup)
     # Wir nutzen die Disk-Daten als "Source of Truth", da diese aktuell sein sollten (z.B. nach Button-Klick)
@@ -3469,7 +3493,7 @@ def admin():
     fines_team2 = Fine.query.filter((Fine.team == 'team2') | (Fine.team == None)).order_by(Fine.type, Fine.description).all() # Fallback
 
     # --- HISTORY: My Bookings Today ---
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = get_local_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     my_transactions_today = Transaction.query.filter(
         Transaction.created_by == current_user.username,
@@ -3627,7 +3651,7 @@ def admin():
         fupa_game_data[player.id] = p_data
     # --- ENDE DES KORREKTUR-BLOCKS ---
 
-    today = datetime.now(GERMAN_TZ).date()
+    today = get_local_now().date()
     next_birthday_info = None
     if current_user.role == 'admin':
         players_with_bday = Player.query.filter(Player.birthday.isnot(None), Player.is_active==True).all()
@@ -3754,7 +3778,7 @@ def admin():
             current_user_push_active=current_user_push_active,
             selected_season=g.current_season_str,
             today=today,
-            now=datetime.utcnow(),
+            now=get_local_now(),
             pending_info=pending_info,
             game_already_booked_t1=game_already_booked_t1,
             game_already_booked_t2=game_already_booked_t2,
@@ -3781,7 +3805,7 @@ def admin():
         start_balance_team1=start_balance_team1_setting.value if start_balance_team1_setting else "",
         start_balance_team2=start_balance_team2_setting.value if start_balance_team2_setting else "",
         today=today,
-        now=datetime.utcnow(),
+        now=get_local_now(),
         players_for_game_fee=players_for_game_fee,
         latest_game_date=latest_game_date,
         latest_game_opponent=latest_game_opponent,
@@ -4914,7 +4938,7 @@ def delete_transaction(tx_id):
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(days=30):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(days=30):
                 allowed = True
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
@@ -4970,7 +4994,7 @@ def delete_transaction_bulk(tx_id):
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(days=30):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(days=30):
                 allowed = True
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
@@ -5039,7 +5063,7 @@ def delete_kistl_transaction(tx_id):
         if 'admin' in user_roles: 
             allowed = True
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
                 allowed = True
         
         if not allowed:
@@ -5083,13 +5107,13 @@ def delete_team_expense(tx_id):
         if 'admin' in user_roles: 
             allowed = True
         elif tx.team == 'team1' and 'trikot_manager_1' in user_roles: 
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
                 allowed = True
         elif tx.team == 'team2' and 'trikot_manager_2' in user_roles: 
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
                 allowed = True
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
+            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
                 allowed = True
 
         if not allowed:
@@ -5350,7 +5374,7 @@ def add_game_fee():
         game_fee = float(settings.get('game_fee', '3.00'))
         
         def parse_d(d_str):
-                if not d_str: return datetime.utcnow().date()
+                if not d_str: return get_local_now().date()
                 return datetime.strptime(d_str, '%Y-%m-%d').date()
 
         team1_player_ids = set(request.form.getlist('team1_player_ids'))
@@ -5422,7 +5446,7 @@ def add_game_fee():
                     pending.date = date_val
                     pending.opponent = opp_val
                     pending.created_by = current_user.username
-                    pending.created_at = datetime.utcnow()
+                    pending.created_at = get_local_now()
                     db.session.commit()
                     
                     if can_book: flash(f'Antrag für {team_str} wurde aktualisiert (und zurückgegeben).', 'info')
@@ -5856,7 +5880,7 @@ def download_backup():
             pd.read_sql_table('kasse_settings', db.engine).to_excel(writer, sheet_name='Kassen-Einstellungen', index=False)
             pd.read_sql_table('admin_user', db.engine).to_excel(writer, sheet_name='Admin-Benutzer', index=False)
         output.seek(0)
-        filename = f"backup_mannschaftskasse_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+        filename = f"backup_mannschaftskasse_{get_local_now().strftime('%Y-%m-%d')}.xlsx"
         log_audit("DOWNLOAD", "BACKUP", f"Datenbank-Backup '{filename}' (Excel) wurde heruntergeladen.")
         return send_file(output, download_name=filename, as_attachment=True)
     except Exception as e: flash(f"Fehler beim Erstellen des Backups: {e}", "danger"); return redirect(url_for('admin'))
@@ -6135,7 +6159,7 @@ def send_debtor_reminders_command(dry_run):
         print("Starte Schuldner-Erinnerungen...")
         push_logger.info("Scheduler: Starte Schuldner-Erinnerungen-Check...")
         
-        season_str = get_season_for_date(datetime.utcnow().date())
+        season_str = get_season_for_date(get_local_now().date())
         fupa_data = get_latest_fupa_game_data(season_str)
         game_date_str = fupa_data.get('team2_date')
         
@@ -6145,7 +6169,7 @@ def send_debtor_reminders_command(dry_run):
             return
 
         game_date = datetime.strptime(game_date_str, '%Y-%m-%d').date()
-        today = datetime.utcnow().date()
+        today = get_local_now().date()
 
         if game_date != today:
             print(f"Heute ({today}) ist kein Spieltag (nächstes Spiel: {game_date}). Breche ab.")

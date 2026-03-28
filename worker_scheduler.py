@@ -4,7 +4,7 @@ import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import atexit
-from app import app, db, Player, KasseSetting, Transaction, get_deadline, send_push_notification, GERMAN_TZ, datetime, timedelta
+from app import app, db, Player, KasseSetting, Transaction, get_deadline, send_push_notification, GERMAN_TZ, datetime, timedelta, get_local_now
 
 def send_debt_reminders():
     """
@@ -54,7 +54,7 @@ def run_doubling_check():
         logger.info("Starte Verdopplungs-Check...")
 
         try:
-            today = datetime.utcnow().date()
+            today = get_local_now().date()
             
             s1 = KasseSetting.query.filter_by(key='doubling_active_team1').first()
             active_t1 = s1.value == '1' if s1 else False
@@ -132,7 +132,7 @@ def run_fine_reminder():
             
             players = Player.query.filter_by(is_active=True).all()
             count = 0
-            today_date = datetime.now(GERMAN_TZ).date()
+            today_date = get_local_now().date()
             
             for p in players:
                 fine = p.oldest_unpaid_fine
@@ -175,7 +175,7 @@ def check_birthdays():
     from app import User
     with app.app_context():
         try:
-            today = datetime.now(GERMAN_TZ).date()
+            today = get_local_now().date()
             all_players = Player.query.filter_by(is_active=True).all()
             birthday_kids = []
             
