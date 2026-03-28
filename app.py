@@ -826,54 +826,57 @@ def get_latest_fupa_game_data(season_str):
        
 def update_fupa_cache_in_background(season_str):
     """Diese Funktion wird in einem separaten Thread ausgeführt, um den Cache zu aktualisieren."""
-    fupa_logger.info("===== Starte Fupa-Daten-Update im Hintergrund =====")
-    live_fupa_data = get_latest_fupa_game_data(season_str)
-    
-    # **NEUE, bessere Bedingung:**
-    # Wir aktualisieren den Cache, sobald ein Spieldatum für Team 1 ODER Team 2 gefunden wurde.
-    if live_fupa_data and (live_fupa_data.get('team2_date') or live_fupa_data.get('team1_date')):
-        new_ts = datetime.utcnow()
+    try:
+        fupa_logger.info("===== Starte Fupa-Daten-Update im Hintergrund =====")
+        live_fupa_data = get_latest_fupa_game_data(season_str)
         
-        # Merge mit vorherigem Cache, um leere Daten (z.B. durch Rate-Limits) abzufangen
-        old_data = fupa_cache.get("data")
-        if not old_data: old_data, _ = load_fupa_cache()
+        # **NEUE, bessere Bedingung:**
+        # Wir aktualisieren den Cache, sobald ein Spieldatum für Team 1 ODER Team 2 gefunden wurde.
+        if live_fupa_data and (live_fupa_data.get('team2_date') or live_fupa_data.get('team1_date')):
+            new_ts = datetime.utcnow()
             
-        if old_data and isinstance(old_data, dict):
-            if not live_fupa_data.get('team1_date') and old_data.get('team1_date'):
-                live_fupa_data['team1_date'] = old_data.get('team1_date')
-                live_fupa_data['team1_opponent'] = old_data.get('team1_opponent')
-                live_fupa_data['team1_lineup'] = old_data.get('team1_lineup', set())
-            if not live_fupa_data.get('team2_date') and old_data.get('team2_date'):
-                live_fupa_data['team2_date'] = old_data.get('team2_date')
-                live_fupa_data['team2_opponent'] = old_data.get('team2_opponent')
-                live_fupa_data['team2_lineup'] = old_data.get('team2_lineup', set())
+            # Merge mit vorherigem Cache, um leere Daten (z.B. durch Rate-Limits) abzufangen
+            old_data = fupa_cache.get("data")
+            if not old_data: old_data, _ = load_fupa_cache()
                 
-        fupa_cache["data"] = live_fupa_data
-        fupa_cache["timestamp"] = new_ts
-        save_fupa_cache_to_disk(live_fupa_data, new_ts)
-        
-        # Loggen, was wir gefunden haben
-        teams_found = []
-        if live_fupa_data.get('team2_date'):
-            teams_found.append(f"Team 2 ({live_fupa_data.get('team2_opponent')})")
-        if live_fupa_data.get('team1_date'):
-            teams_found.append(f"Team 1 ({live_fupa_data.get('team1_opponent')})")
+            if old_data and isinstance(old_data, dict):
+                if not live_fupa_data.get('team1_date') and old_data.get('team1_date'):
+                    live_fupa_data['team1_date'] = old_data.get('team1_date')
+                    live_fupa_data['team1_opponent'] = old_data.get('team1_opponent')
+                    live_fupa_data['team1_lineup'] = old_data.get('team1_lineup', set())
+                if not live_fupa_data.get('team2_date') and old_data.get('team2_date'):
+                    live_fupa_data['team2_date'] = old_data.get('team2_date')
+                    live_fupa_data['team2_opponent'] = old_data.get('team2_opponent')
+                    live_fupa_data['team2_lineup'] = old_data.get('team2_lineup', set())
+                    
+            fupa_cache["data"] = live_fupa_data
+            fupa_cache["timestamp"] = new_ts
+            save_fupa_cache_to_disk(live_fupa_data, new_ts)
             
-        fupa_logger.info(f"Cache aktualisiert. Gefundene Spiele: {', '.join(teams_found)}.")
-        
-        if live_fupa_data.get('team2_lineup'):
-            fupa_logger.info(f"Team 2 Kader ({len(live_fupa_data['team2_lineup'])} Spieler) gefunden: {', '.join(sorted(live_fupa_data['team2_lineup']))}")
+            # Loggen, was wir gefunden haben
+            teams_found = []
+            if live_fupa_data.get('team2_date'):
+                teams_found.append(f"Team 2 ({live_fupa_data.get('team2_opponent')})")
+            if live_fupa_data.get('team1_date'):
+                teams_found.append(f"Team 1 ({live_fupa_data.get('team1_opponent')})")
+                
+            fupa_logger.info(f"Cache aktualisiert. Gefundene Spiele: {', '.join(teams_found)}.")
+            
+            if live_fupa_data.get('team2_lineup'):
+                fupa_logger.info(f"Team 2 Kader ({len(live_fupa_data['team2_lineup'])} Spieler) gefunden: {', '.join(sorted(live_fupa_data['team2_lineup']))}")
+            else:
+                fupa_logger.warning("Kein Kader für Team 2 gefunden.")
+            
+            if live_fupa_data.get('team1_lineup'):
+                fupa_logger.info(f"Team 1 Kader ({len(live_fupa_data['team1_lineup'])} Spieler) gefunden: {', '.join(sorted(live_fupa_data['team1_lineup']))}")
+            else:
+                fupa_logger.warning("Kein Kader für Team 1 gefunden.")
         else:
-            fupa_logger.warning("Kein Kader für Team 2 gefunden.")
+            fupa_logger.warning("Kein brauchbares Spiel für Team 1 oder Team 2 auf Fupa gefunden. Cache nicht aktualisiert.")
         
-        if live_fupa_data.get('team1_lineup'):
-            fupa_logger.info(f"Team 1 Kader ({len(live_fupa_data['team1_lineup'])} Spieler) gefunden: {', '.join(sorted(live_fupa_data['team1_lineup']))}")
-        else:
-            fupa_logger.warning("Kein Kader für Team 1 gefunden.")
-    else:
-        fupa_logger.warning("Kein brauchbares Spiel für Team 1 oder Team 2 auf Fupa gefunden. Cache nicht aktualisiert.")
-    
-    fupa_logger.info("===== Fupa-Daten-Update im Hintergrund beendet =====")
+        fupa_logger.info("===== Fupa-Daten-Update im Hintergrund beendet =====")
+    except Exception as e:
+        fupa_logger.error(f"Unbehandelter Fehler im Fupa-Hintergrund-Thread: {e}")
         
 # --- Saison-Hilfsfunktionen ---
 def get_season_for_date(dt):
