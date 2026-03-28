@@ -804,15 +804,16 @@
                             </td>
                             <td>
                               <!-- LEGACY DELETE CHECK LOGIC -->
+                              {% set u_roles = [current_user.role, current_user.secondary_role|default(''), current_user.real_role|default('')] %}
                               {% set show_delete = False %}
-                              {% if current_user.role == 'admin' %}
+                              {% if 'admin' in u_roles %}
                                   {% set show_delete = True %}
                               {% else %}
                                   {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
-                                      {% if tx.team == 'team1' and current_user.role in ['trikot_manager_1', 'strafen_manager_1'] %}
+                                      {% if tx.team == 'team1' and ('trikot_manager_1' in u_roles or 'strafen_manager_1' in u_roles) %}
                                           {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
                                       {% endif %}
-                                      {% if tx.team == 'team2' and current_user.role in ['trikot_manager_2', 'strafen_manager_2'] %}
+                                      {% if tx.team == 'team2' and ('trikot_manager_2' in u_roles or 'strafen_manager_2' in u_roles) %}
                                           {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
                                       {% endif %}
                                   {% endif %}
@@ -1090,7 +1091,10 @@
                              </div>
                              <div class="col-2 text-end">
                                <button class="btn btn-sm btn-primary py-0">Save</button>
-                               <a href="{{ url_for('delete_user', user_id=user.id) }}" class="btn btn-sm btn-danger py-0">X</a>
+                               <form action="{{ url_for('delete_user', user_id=user.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Benutzer wirklich löschen?');">
+                                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                   <button type="submit" class="btn btn-sm btn-danger py-0">X</button>
+                               </form>
                              </div>
                         </form>
                     </li>

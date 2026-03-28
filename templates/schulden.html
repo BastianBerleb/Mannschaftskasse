@@ -69,11 +69,15 @@
           <button type="button" class="btn btn-outline-secondary active" onclick="updateImage('all', this)">Gesamt</button>
           
           {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1', 'viewer'] %}
-          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team1', this)">Erste</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team1', this)">Erste (Alle)</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team1_fine', this)">Erste (Strafen)</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team1_general', this)">Erste (Trikot)</button>
           {% endif %}
           
           {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2', 'viewer'] %}
-          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team2', this)">Zweite</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team2', this)">Zweite (Alle)</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team2_fine', this)">Zweite (Strafen)</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="updateImage('team2_general', this)">Zweite (Trikot)</button>
           {% endif %}
         </div>
     
@@ -91,6 +95,10 @@
     <textarea id="msg-all" style="display: none;">{{ msg_all }}</textarea>
     <textarea id="msg-team1" style="display: none;">{{ msg_t1 }}</textarea>
     <textarea id="msg-team2" style="display: none;">{{ msg_t2 }}</textarea>
+    <textarea id="msg-team1_fine" style="display: none;">{{ msg_t1_fine }}</textarea>
+    <textarea id="msg-team1_general" style="display: none;">{{ msg_t1_general }}</textarea>
+    <textarea id="msg-team2_fine" style="display: none;">{{ msg_t2_fine }}</textarea>
+    <textarea id="msg-team2_general" style="display: none;">{{ msg_t2_general }}</textarea>
     <textarea id="whatsapp-image-message-content" style="display: none;">{{ msg_all }}</textarea>
 
 {% else %}

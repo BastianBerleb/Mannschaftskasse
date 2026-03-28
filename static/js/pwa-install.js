@@ -16,11 +16,13 @@ class PWAInstallManager {
     this.installButtons = [
       document.getElementById('pwa-install-button'),
       document.getElementById('install-app-mini-btn'), 
+      document.getElementById('install-app-btn'), // Prominenter Button!
       document.getElementById('mobile-install-button')
     ].filter(btn => btn !== null);
     
     this.mobileOverlay = document.getElementById('mobile-install-overlay');
     this.miniInstallBanner = document.getElementById('app-install-mini-banner');
+    this.mainInstallBanner = document.getElementById('app-install-banner'); // Prominenter Banner
     
     this.setupEventListeners();
     this.checkIOSAutoShow();
@@ -89,10 +91,19 @@ class PWAInstallManager {
       return;
     }
 
+    // Prüfe ob kürzlich dismissed (24h)
+    const dismissed = localStorage.getItem('pwa-install-dismissed');
+    if (dismissed && (Date.now() - parseInt(dismissed)) < 86400000) { 
+      return;
+    }
+
     if (this.isMobileDevice()) {
       this.showMobileInstallPrompt();
     } else {
-      if (this.miniInstallBanner) {
+      // Prominenten Install-Banner auf dem Desktop / Tablet statt nur des kleinen anzeigen:
+      if (this.mainInstallBanner) {
+        this.mainInstallBanner.classList.remove('d-none');
+      } else if (this.miniInstallBanner) {
         this.miniInstallBanner.classList.remove('d-none');
       }
     }
@@ -169,6 +180,9 @@ class PWAInstallManager {
     }
     if (this.miniInstallBanner) {
       this.miniInstallBanner.classList.add('d-none');
+    }
+    if (this.mainInstallBanner) {
+      this.mainInstallBanner.classList.add('d-none');
     }
   }
 
@@ -289,3 +303,16 @@ class PWAInstallManager {
 document.addEventListener('DOMContentLoaded', () => {
   window.pwaInstallManager = new PWAInstallManager();
 });
+
+// Globale Funktion für die Schließen-Buttons in base.html
+window.dismissInstallBanner = function() {
+  if (window.pwaInstallManager) {
+    window.pwaInstallManager.hideAllInstallUIs();
+  } else {
+    const mainBanner = document.getElementById('app-install-banner');
+    const miniBanner = document.getElementById('app-install-mini-banner');
+    if (mainBanner) mainBanner.classList.add('d-none');
+    if (miniBanner) miniBanner.classList.add('d-none');
+  }
+  localStorage.setItem('pwa-install-dismissed', Date.now());
+};

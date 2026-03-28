@@ -9,6 +9,7 @@ except ImportError:
 
 # app.py
 import os
+import math
 import time
 import io
 import pandas as pd
@@ -320,13 +321,14 @@ def recalculate_settlements(player_id, team, _db_session=None):
         # 3. Distribute Pool to Fines (FIFO)
         if pool > 0:
             for f in fines:
-                if pool <= 0.001: break
-                
                 needed = abs(f.amount)
-                pay = min(pool, needed)
-                
-                f.amount_settled = pay
-                pool -= pay
+                if pool >= needed - 0.001:
+                    # Vollständige Tilgung möglich
+                    f.amount_settled = needed
+                    pool -= needed
+                else:
+                    # Keine Teil-Tilgung gewünscht!
+                    f.amount_settled = 0.0
         
         # No commit here, caller handles commit
     except Exception as e:
@@ -560,7 +562,16 @@ def role_required(allowed_roles):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated or current_user.role not in allowed_roles:
+            if not current_user.is_authenticated:
+                return redirect(url_for('login'))
+                
+            user_roles = {current_user.role}
+            if getattr(current_user, 'secondary_role', None):
+                user_roles.add(current_user.secondary_role)
+            if getattr(current_user, 'real_role', None):
+                user_roles.add(current_user.real_role)
+                
+            if not any(r in allowed_roles for r in user_roles):
                 if is_ajax():
                     return jsonify({'success': False, 'message': 'Keine Berechtigung für diese Aktion.'}), 403
                 flash("Du hast keine Berechtigung, diese Aktion auszuführen.", "danger")
@@ -2660,11 +2671,26 @@ def schulden():
     msg_t1 = f"Hier ist die aktuelle Übersicht der Mannschaftskasse Erste.\nBitte begleicht eure Schulden zeitnah.\n\n{paypal_msg_block_t1}\nErste:\n{mgr_t1_text}\n\nDie Details seht ihr hier: {full_url_t1}\n{app_hint}"
     msg_t2 = f"Hier ist die aktuelle Übersicht der Mannschaftskasse Zweite.\nBitte begleicht eure Schulden zeitnah.\n\n{paypal_msg_block_t2}\nZweite:\n{mgr_t2_text}\n\nDie Details seht ihr hier: {full_url_t2}\n{app_hint}"
 
+    def build_specific_msg(team_name, sub_mode, lnk, mail, mgr_text, url):
+        link_str = f"PayPal: {lnk}" if lnk else (f"PayPal ($): {mail}" if mail else "Bitte bar bezahlen!")
+        title_type = "Trikotgeld-Pott" if sub_mode == 'general' else "Strafen-Pott"
+        return f"Hier ist die {title_type} Übersicht der Mannschaftskasse {team_name}.\nBitte begleicht eure Schulden zeitnah.\n\nZahlung (als Freunde und Familie):\n{link_str}\n\n{team_name}:\n{mgr_text}\n\nApp: {url}\n{app_hint}"
+
+    msg_t1_general = build_specific_msg("Erste", 'general', lnk_t1_gen, mail_t1_gen, mgr_t1_text, full_url_t1)
+    msg_t1_fine = build_specific_msg("Erste", 'fine', lnk_t1_fine, mail_t1_fine, mgr_t1_text, full_url_t1)
+    
+    msg_t2_general = build_specific_msg("Zweite", 'general', lnk_t2_gen, mail_t2_gen, mgr_t2_text, full_url_t2)
+    msg_t2_fine = build_specific_msg("Zweite", 'fine', lnk_t2_fine, mail_t2_fine, mgr_t2_text, full_url_t2)
+
     return render_template('schulden.html', 
                            debtors=debtors, 
                            msg_all=msg_all,
                            msg_t1=msg_t1,
-                           msg_t2=msg_t2)
+                           msg_t2=msg_t2,
+                           msg_t1_general=msg_t1_general,
+                           msg_t1_fine=msg_t1_fine,
+                           msg_t2_general=msg_t2_general,
+                           msg_t2_fine=msg_t2_fine)
 # Wiederhergestellte, Unicode-fähige Bildroute für die Schulden-Übersicht
 # --- IMAGE GENERATION HELPER (BACKGROUND & CACHING) ---
 def trigger_image_regeneration():
@@ -2685,8 +2711,8 @@ def _regenerate_all_images():
         # print("DEBUG: Regenerating debt images cache...")
         global fines_image_cache
         
-        # 3 Varianten generieren
-        modes = ['all', 'team1', 'team2']
+        # 3 Varianten generieren plus Strafen/Trikot getrennt
+        modes = ['all', 'team1', 'team2', 'team1_fine', 'team2_fine', 'team1_general', 'team2_general']
         for m in modes:
             img_bytes = _generate_debt_image_bytes(m)
             if img_bytes:
@@ -2707,40 +2733,64 @@ def _generate_debt_image_bytes(filter_mode):
         creditors = []
         
         # --- FILTER LOGIC ---
-        if filter_mode == 'team1':
-            # Nur Spieler mit Schulden/Guthaben bei Team 1
-            relevant = [p for p in all_active_players if (abs(p.balance_team1) > 0.001 or p.kistl_balance != 0)]
-            debtors = [p for p in relevant if (p.balance_team1 < 0 or p.kistl_balance < 0)]
-            debtor_set = set(debtors)
-            creditors = [p for p in relevant if p not in debtor_set]
-            debtors.sort(key=lambda p: (p.balance_team1, p.kistl_balance))
-            creditors.sort(key=lambda p: (p.balance_team1, p.kistl_balance), reverse=True)
-            title = 'Schuldenübersicht (1. Mannschaft)'
+        mode_parts = filter_mode.split('_')
+        base_team_mode = mode_parts[0] if mode_parts[0] in ['team1', 'team2'] else 'all'
+        sub_mode = mode_parts[1] if len(mode_parts) > 1 else 'all'
+
+        if base_team_mode == 'team1':
+            tm = 'team1'
+            if sub_mode == 'fine':
+                relevant = [p for p in all_active_players if p.fine_balance_team1 != 0]
+                debtors = [p for p in relevant if p.fine_balance_team1 < 0]
+                debtors.sort(key=lambda p: p.fine_balance_team1)
+                title = 'Schuldenübersicht Strafen (1. Mannschaft)'
+            elif sub_mode == 'general':
+                relevant = [p for p in all_active_players if p.general_balance_team1 != 0]
+                debtors = [p for p in relevant if p.general_balance_team1 < 0]
+                debtors.sort(key=lambda p: p.general_balance_team1)
+                title = 'Schuldenübersicht Trikotgeld (1. Mannschaft)'
+            else:
+                relevant = [p for p in all_active_players if (abs(p.balance_team1) > 0.001 or p.kistl_balance != 0)]
+                debtors = [p for p in relevant if (p.balance_team1 < 0 or p.kistl_balance < 0)]
+                debtors.sort(key=lambda p: (p.balance_team1, p.kistl_balance))
+                title = 'Schuldenübersicht Gesamt (1. Mannschaft)'
             
-        elif filter_mode == 'team2':
-            relevant = [p for p in all_active_players if (abs(p.balance_team2) > 0.001 or p.kistl_balance != 0)]
-            debtors = [p for p in relevant if (p.balance_team2 < 0 or p.kistl_balance < 0)]
-            debtor_set = set(debtors)
-            creditors = [p for p in relevant if p not in debtor_set]
-            debtors.sort(key=lambda p: (p.balance_team2, p.kistl_balance))
-            creditors.sort(key=lambda p: (p.balance_team2, p.kistl_balance), reverse=True)
-            title = 'Schuldenübersicht (2. Mannschaft)'
+        elif base_team_mode == 'team2':
+            tm = 'team2'
+            if sub_mode == 'fine':
+                relevant = [p for p in all_active_players if p.fine_balance_team2 != 0]
+                debtors = [p for p in relevant if p.fine_balance_team2 < 0]
+                debtors.sort(key=lambda p: p.fine_balance_team2)
+                title = 'Schuldenübersicht Strafen (2. Mannschaft)'
+            elif sub_mode == 'general':
+                relevant = [p for p in all_active_players if p.general_balance_team2 != 0]
+                debtors = [p for p in relevant if p.general_balance_team2 < 0]
+                debtors.sort(key=lambda p: p.general_balance_team2)
+                title = 'Schuldenübersicht Trikotgeld (2. Mannschaft)'
+            else:
+                relevant = [p for p in all_active_players if (abs(p.balance_team2) > 0.001 or p.kistl_balance != 0)]
+                debtors = [p for p in relevant if (p.balance_team2 < 0 or p.kistl_balance < 0)]
+                debtors.sort(key=lambda p: (p.balance_team2, p.kistl_balance))
+                title = 'Schuldenübersicht Gesamt (2. Mannschaft)'
             
         else:
             # Debtor if ANY team has debt or kistl is negative
             debtors = [p for p in all_active_players if p.balance_team1 < -0.01 or p.balance_team2 < -0.01 or p.kistl_balance < 0]
             # Sort: money debts first (0), then kistl-only (1); within each group by total balance
             debtors.sort(key=lambda p: (0 if (p.balance_team1 < -0.01 or p.balance_team2 < -0.01) else 1, p.balance_team1 + p.balance_team2, p.kistl_balance))
-            debtor_set = set(debtors)
-            creditors = [p for p in all_active_players if p not in debtor_set]
-            creditors.sort(key=lambda p: (p.balance_team1 + p.balance_team2, p.kistl_balance), reverse=True)
             title = 'Schuldenübersicht (Gesamt)'
 
-        sequence = debtors + creditors
+        # Nur Schuldner anzeigen (Guthaben und 0€ weglassen)
+        sequence = debtors
 
         # --- PREMIUM CONFIGURATION (2x Retina) ---
         S = 2  # Scale factor for high-res output
-        width = (1500 if filter_mode == 'all' else 1650) * S
+        if sub_mode == 'general':
+            width = 800 * S
+        elif base_team_mode == 'all':
+            width = 1500 * S
+        else:
+            width = 1650 * S
         padding_x = 30 * S
         header_height = 80 * S
         base_row_height = 52 * S
@@ -2748,14 +2798,15 @@ def _generate_debt_image_bytes(filter_mode):
         player_heights = []
         player_unpaid_fines = []
         for p in sequence:
-            if filter_mode in ['team1', 'team2']:
-                tm = filter_mode
+            if base_team_mode in ['team1', 'team2'] and sub_mode in ['all', 'fine']:
+                tm = base_team_mode
                 p_fines = [t for t in p.transactions if t.category == 'fine' and t.team == tm and t.amount < 0]
                 unpaid = [f for f in sorted(p_fines, key=lambda x: x.date, reverse=False) if (getattr(f, 'amount_settled', 0.0) or 0.0) < abs(f.amount) - 0.01]
                 player_unpaid_fines.append(unpaid)
                 gen_bal = getattr(p, f'general_balance_{tm}')
                 fine_bal = getattr(p, f'fine_balance_{tm}')
-                if (gen_bal + fine_bal < 0) and unpaid:
+                # Bei Strafen-Sicht oder Gesamt-Sicht Detailhöhe
+                if (fine_bal < 0) and unpaid:
                     h = max(base_row_height, (len(unpaid) * 22 * S) + 20 * S)
                     player_heights.append(h)
                 else:
@@ -2764,7 +2815,7 @@ def _generate_debt_image_bytes(filter_mode):
                 player_unpaid_fines.append([])
                 player_heights.append(base_row_height)
                 
-        column_header_height = (58 if filter_mode == 'all' else 38) * S
+        column_header_height = (58 if base_team_mode == 'all' else 38) * S
         accent_line_height = 3 * S
         
         # Premium color palette
@@ -2873,22 +2924,23 @@ def _generate_debt_image_bytes(filter_mode):
         # --- COLUMNS (scaled) ---
         y_start = header_height + accent_line_height
         
-        if filter_mode == 'team1':
-            col_ges_x = 350 * S
-            col_trikot_x = 510 * S
-            col_fines_x = 670 * S
-            col_kistl_x = 820 * S
-            col_letzte_strafe_x = 880 * S
+        if base_team_mode in ['team1', 'team2']:
             headers_col_player_x = 85 * S
-            headers = [("Spieler", headers_col_player_x), ("Gesamt", col_ges_x), ("Trikot", col_trikot_x), ("Strafe", col_fines_x), ("Kistl", col_kistl_x), ("Offene Strafen", col_letzte_strafe_x)]
-        elif filter_mode == 'team2':
-            col_ges_x = 350 * S
-            col_trikot_x = 510 * S
-            col_fines_x = 670 * S
-            col_kistl_x = 820 * S
-            col_letzte_strafe_x = 880 * S
-            headers_col_player_x = 85 * S
-            headers = [("Spieler", headers_col_player_x), ("Gesamt", col_ges_x), ("Trikot", col_trikot_x), ("Strafe", col_fines_x), ("Kistl", col_kistl_x), ("Offene Strafen", col_letzte_strafe_x)]
+            if sub_mode == 'general':
+                col_trikot_x = 550 * S
+                headers = [("Spieler", headers_col_player_x), ("Trikot", col_trikot_x)]
+            elif sub_mode == 'fine':
+                col_fines_x = 350 * S
+                col_kistl_x = 500 * S
+                col_letzte_strafe_x = 650 * S
+                headers = [("Spieler", headers_col_player_x), ("Strafe", col_fines_x), ("Kistl", col_kistl_x), ("Offene Strafen", col_letzte_strafe_x)]
+            else:
+                col_ges_x = 350 * S
+                col_trikot_x = 510 * S
+                col_fines_x = 670 * S
+                col_kistl_x = 820 * S
+                col_letzte_strafe_x = 880 * S
+                headers = [("Spieler", headers_col_player_x), ("Gesamt", col_ges_x), ("Trikot", col_trikot_x), ("Strafe", col_fines_x), ("Kistl", col_kistl_x), ("Offene Strafen", col_letzte_strafe_x)]
         else:
             col_t1_ges_x = 340 * S
             col_t1_trikot_x = 480 * S
@@ -2947,17 +2999,27 @@ def _generate_debt_image_bytes(filter_mode):
             draw.rectangle([(0, y_pos), (width, y_pos + current_row_height)], fill=row_bg)
             draw.line([(padding_x, y_pos + current_row_height - 1), (width - padding_x, y_pos + current_row_height - 1)], fill=COLOR_LINE, width=S)
             
-            is_debtor = (player.balance_team1 < -0.01 if filter_mode == 'team1' 
-                         else (player.balance_team2 < -0.01 or player.kistl_balance < 0 if filter_mode == 'team2' 
-                         else (player.balance_team1 < -0.01 or player.balance_team2 < -0.01 or player.kistl_balance < 0)))
-            
+            is_debtor = False
             has_any_balance = False
-            if filter_mode == 'team1':
-                has_any_balance = abs(player.balance_team1) > 0.01 or player.kistl_balance != 0
-            elif filter_mode == 'team2':
-                has_any_balance = abs(player.balance_team2) > 0.01 or player.kistl_balance != 0
+            
+            if sub_mode == 'general':
+                is_debtor = getattr(player, f'general_balance_{base_team_mode}') < -0.01
+                has_any_balance = abs(getattr(player, f'general_balance_{base_team_mode}')) > 0.01
+            elif sub_mode == 'fine':
+                f_val = getattr(player, f'fine_balance_{base_team_mode}')
+                is_debtor = f_val < -0.01 or player.kistl_balance < 0
+                has_any_balance = abs(f_val) > 0.01 or player.kistl_balance != 0
             else:
-                has_any_balance = abs(player.balance_team1) > 0.01 or abs(player.balance_team2) > 0.01 or player.kistl_balance != 0
+                is_debtor = (player.balance_team1 < -0.01 if base_team_mode == 'team1' 
+                             else (player.balance_team2 < -0.01 or player.kistl_balance < 0 if base_team_mode == 'team2' 
+                             else (player.balance_team1 < -0.01 or player.balance_team2 < -0.01 or player.kistl_balance < 0)))
+                
+                if base_team_mode == 'team1':
+                    has_any_balance = abs(player.balance_team1) > 0.01 or player.kistl_balance != 0
+                elif base_team_mode == 'team2':
+                    has_any_balance = abs(player.balance_team2) > 0.01 or player.kistl_balance != 0
+                else:
+                    has_any_balance = abs(player.balance_team1) > 0.01 or abs(player.balance_team2) > 0.01 or player.kistl_balance != 0
             
             # Left accent bar
             if is_debtor:
@@ -3013,53 +3075,60 @@ def _generate_debt_image_bytes(filter_mode):
             name_color = COLOR_TEXT if is_debtor else COLOR_TEXT_LIGHT
             draw.text((col_player_x, y_pos + 14 * S), player.name, font=font_bold if is_debtor else font_regular, fill=name_color)
             
-            if filter_mode in ['team1', 'team2']:
-                tm = filter_mode
+            if base_team_mode in ['team1', 'team2']:
+                tm = base_team_mode
                 v = getattr(player, f'balance_{tm}')
-                if abs(v) > 0.01:
-                    c = COLOR_DEBT if v < 0 else (COLOR_CREDIT if v > 0 else (150,150,150))
-                    draw.text((col_ges_x, y_pos + 14 * S), f"{v:.2f} €", font=font_bold, fill=c)
-                
                 g = getattr(player, f'general_balance_{tm}')
-                if abs(g) > 0.01 and v < 0:
-                    c = COLOR_DEBT if g < 0 else (COLOR_CREDIT if g > 0 else (150,150,150))
-                    draw.text((col_trikot_x, y_pos + 14 * S), f"{g:.2f} €", font=font_regular, fill=c)
-                
                 f_val = getattr(player, f'fine_balance_{tm}')
-                if abs(f_val) > 0.01 and v < 0:
-                    c = COLOR_DEBT if f_val < 0 else (COLOR_CREDIT if f_val > 0 else (150,150,150))
-                    draw.text((col_fines_x, y_pos + 14 * S), f"{f_val:.2f} €", font=font_regular, fill=c)
-                
                 k = player.kistl_balance
-                if k < 0:
-                     pill_text = f"{abs(k)} x"
-                     try: pw = font_bold.getlength(pill_text)
-                     except: pw = 30 * S
-                     pill_pad = 8 * S
-                     pill_h = 22 * S
-                     pill_y = y_pos + (base_row_height - pill_h) // 2
-                     draw.rounded_rectangle([(col_kistl_x - pill_pad, pill_y), (col_kistl_x + pw + pill_pad, pill_y + pill_h)], radius=11 * S, fill=COLOR_WARNING)
-                     draw.text((col_kistl_x, pill_y + 2 * S), pill_text, font=font_bold, fill=(255, 255, 255))
+
+                if sub_mode in ['all']:
+                    if abs(v) > 0.01:
+                        c = COLOR_DEBT if v < 0 else (COLOR_CREDIT if v > 0 else (150,150,150))
+                        draw.text((col_ges_x, y_pos + 14 * S), f"{v:.2f} €", font=font_bold, fill=c)
                 
-                try:
-                    unpaid_fines = player_unpaid_fines[i]
-                    if unpaid_fines and (g + f_val < -0.01):
-                        block_height = len(unpaid_fines) * 22 * S
-                        current_fines_y = y_pos + (current_row_height - block_height) // 2 + 3 * S # +3 for optical adjustment
-                        for f in unpaid_fines:
-                            f_date_str = f.date.strftime('%d.%m.')
-                            f_desc = f"{f_date_str} - {f.description}"
-                            max_text_w = width - padding_x - col_letzte_strafe_x
-                            try:
-                                while f_desc and font_desc_large.getlength(f_desc + '...') > max_text_w:
-                                    f_desc = f_desc[:-1]
-                                if len(f_desc) < len(f"{f_date_str} - {f.description}"): f_desc += '...'
-                            except Exception: f_desc = f_desc[:90]
-                            
-                            draw.text((col_letzte_strafe_x, current_fines_y), f_desc, font=font_desc_large, fill=COLOR_DEBT)
-                            current_fines_y += 22 * S
-                except Exception:
-                    pass
+                if sub_mode in ['all', 'general']:
+                    if abs(g) > 0.01 and (v < 0 if sub_mode == 'all' else True):
+                        c = COLOR_DEBT if g < 0 else (COLOR_CREDIT if g > 0 else (150,150,150))
+                        fnt = font_bold if sub_mode == 'general' else font_regular
+                        draw.text((col_trikot_x, y_pos + 14 * S), f"{g:.2f} €", font=fnt, fill=c)
+                
+                if sub_mode in ['all', 'fine']:
+                    if abs(f_val) > 0.01 and (v < 0 if sub_mode == 'all' else True):
+                        c = COLOR_DEBT if f_val < 0 else (COLOR_CREDIT if f_val > 0 else (150,150,150))
+                        fnt = font_bold if sub_mode == 'fine' else font_regular
+                        draw.text((col_fines_x, y_pos + 14 * S), f"{f_val:.2f} €", font=fnt, fill=c)
+                
+                    if k < 0:
+                         pill_text = f"{abs(k)} x"
+                         try: pw = font_bold.getlength(pill_text)
+                         except: pw = 30 * S
+                         pill_pad = 8 * S
+                         pill_h = 22 * S
+                         pill_y = y_pos + (base_row_height - pill_h) // 2
+                         draw.rounded_rectangle([(col_kistl_x - pill_pad, pill_y), (col_kistl_x + pw + pill_pad, pill_y + pill_h)], radius=11 * S, fill=COLOR_WARNING)
+                         draw.text((col_kistl_x, pill_y + 2 * S), pill_text, font=font_bold, fill=(255, 255, 255))
+                
+                    try:
+                        unpaid_fines = player_unpaid_fines[i]
+                        condition = (g + f_val < -0.01) if sub_mode == 'all' else True
+                        if unpaid_fines and condition:
+                            block_height = len(unpaid_fines) * 22 * S
+                            current_fines_y = y_pos + (current_row_height - block_height) // 2 + 3 * S # +3 for optical adjustment
+                            for f in unpaid_fines:
+                                f_date_str = f.date.strftime('%d.%m.')
+                                f_desc = f"{f_date_str} - {f.description}"
+                                max_text_w = width - padding_x - col_letzte_strafe_x
+                                try:
+                                    while f_desc and font_desc_large.getlength(f_desc + '...') > max_text_w:
+                                        f_desc = f_desc[:-1]
+                                    if len(f_desc) < len(f"{f_date_str} - {f.description}"): f_desc += '...'
+                                except Exception: f_desc = f_desc[:90]
+                                
+                                draw.text((col_letzte_strafe_x, current_fines_y), f_desc, font=font_desc_large, fill=COLOR_DEBT)
+                                current_fines_y += 22 * S
+                    except Exception:
+                        pass
 
             else: # mode: all
                 t1 = player.balance_team1
@@ -3797,6 +3866,9 @@ def add_custom_fine():
         amount_str = request.form['amount']; fine_type = request.form['type']
         target_team = request.form.get('team', 'team2') # Default to team2 (legacy)
 
+        if target_team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
+
         # Permission Check
         if target_team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
@@ -3810,13 +3882,36 @@ def add_custom_fine():
         
         if fine_type == 'money':
             amount = float(amount_str)
+            if math.isnan(amount) or math.isinf(amount) or amount <= 0:
+                raise ValueError("Ungültiger Betrag.")
             final_amt = abs(amount)
             
             # Auto-Settle Logic
-            current_balance = player.get_balance(target_team)
+            # Lock player to prevent race conditions during auto-settle check
+            db.session.query(Player).filter(Player.id == player_id).with_for_update().first()
+            current_balance = player.get_general_balance(target_team)
             initial_settled = 0.0
-            if current_balance > 0:
-                initial_settled = min(current_balance, final_amt)
+            if current_balance >= final_amt - 0.01:
+                initial_settled = final_amt
+                # Automatische Umbuchung vom Guthaben zur Strafe erstellen!
+                db.session.add(Transaction(
+                    player_id=player.id, 
+                    description=f"Auto-Tilgung Guthaben -> Strafe", 
+                    amount=final_amt, 
+                    date=date_val, 
+                    team=target_team, 
+                    category='fine',
+                    created_by='System'
+                ))
+                db.session.add(Transaction(
+                    player_id=player.id, 
+                    description=f"Auto-Tilgung Guthaben -> Strafe", 
+                    amount=-final_amt, 
+                    date=date_val, 
+                    team=target_team, 
+                    category='general',
+                    created_by='System'
+                ))
 
             team_label = "1. Mannschaft" if target_team == 'team1' else "2. Mannschaft"
 
@@ -3927,6 +4022,9 @@ def add_transaction():
         player, fine = Player.query.get_or_404(player_id), Fine.query.get_or_404(fine_id)
         date_val, old_balance = get_date_from_form(request.form), player.balance
         target_team = request.form.get('team', 'team2') # Default to team2
+        
+        if target_team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
         # Permission Check
         if target_team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
@@ -3964,12 +4062,34 @@ def add_transaction():
 
         if fine.type == 'money':
             # Check existing balance for Auto-Settle
+            # Lock the player row to prevent double-spending in concurrent requests
+            db.session.query(Player).filter(Player.id == player_id).with_for_update().first()
+            
             # If player has positive balance, we can use it to effectively "settle" this fine immediately 
             # (conceptually, the money is already in the pot).
-            current_balance = player.get_balance(target_team)
+            current_balance = player.get_general_balance(target_team)
             initial_settled = 0.0
-            if current_balance > 0:
-                initial_settled = min(current_balance, final_amount)
+            if current_balance >= final_amount - 0.01:
+                initial_settled = final_amount
+                # Automatische Umbuchung vom Guthaben zur Strafe erstellen!
+                db.session.add(Transaction(
+                    player_id=player.id, 
+                    description=f"Auto-Tilgung Guthaben -> Strafe", 
+                    amount=final_amount, 
+                    date=date_val, 
+                    team=target_team, 
+                    category='fine',
+                    created_by='System'
+                ))
+                db.session.add(Transaction(
+                    player_id=player.id, 
+                    description=f"Auto-Tilgung Guthaben -> Strafe", 
+                    amount=-final_amount, 
+                    date=date_val, 
+                    team=target_team, 
+                    category='general',
+                    created_by='System'
+                ))
 
             # NEW: Set category to 'fine' for money fines
             tx = Transaction(
@@ -4041,6 +4161,9 @@ def add_mass_transaction():
         if not description or not amount_str or not target_team or not date_str:
             return jsonify({'success': False, 'message': 'Bitte alle Felder ausfüllen.'})
 
+        if target_team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
+
         # Permission Check
         if target_team == 'team1' and current_user.role != 'admin':
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
@@ -4049,6 +4172,8 @@ def add_mass_transaction():
 
         try:
             amount = float(amount_str.replace(',', '.'))
+            if math.isnan(amount) or math.isinf(amount) or amount == 0:
+                 return jsonify({'success': False, 'message': 'Ungültiger Betrag.'})
         except:
              return jsonify({'success': False, 'message': 'Ungültiger Betrag.'})
 
@@ -4068,11 +4193,30 @@ def add_mass_transaction():
                 if not p: continue
 
                 # Auto-Settle Check
-                current_balance = p.get_balance(target_team)
+                db.session.query(Player).filter(Player.id == p.id).with_for_update().first()
+                current_balance = p.get_general_balance(target_team)
                 final_amount_mass = amount if amount > 0 else -amount
                 initial_settled = 0.0
-                if current_balance > 0:
-                    initial_settled = min(current_balance, final_amount_mass)
+                if current_balance >= final_amount_mass - 0.01:
+                    initial_settled = final_amount_mass
+                    db.session.add(Transaction(
+                        player_id=p.id, 
+                        description=f"Auto-Tilgung Guthaben -> Strafe", 
+                        amount=final_amount_mass, 
+                        date=date_val, 
+                        team=target_team, 
+                        category='fine', # Treat custom as fine balancing
+                        created_by='System'
+                    ))
+                    db.session.add(Transaction(
+                        player_id=p.id, 
+                        description=f"Auto-Tilgung Guthaben -> Strafe", 
+                        amount=-final_amount_mass, 
+                        date=date_val, 
+                        team=target_team, 
+                        category='general',
+                        created_by='System'
+                    ))
 
                 db.session.add(Transaction(
                     player_id=int(pid),
@@ -4099,21 +4243,30 @@ def add_mass_transaction():
 
 @app.route('/admin/add-payment', methods=['POST'])
 @login_required
-# Updated roles to exclude strafen_manager
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def add_payment():
     success = False
     message = "Ein unbekannter Fehler ist aufgetreten."
     try:
         player_id = int(request.form['player_id'])
         amount = float(request.form['amount'])
+        if math.isnan(amount) or math.isinf(amount):
+            raise ValueError("Ungültiger Betrag (NaN oder Infinity).")
         date_val = get_date_from_form(request.form)
         target_team = request.form.get('team', 'team2') # Default to team2
+        custom_category = request.form.get('payment_category', 'standard')
+
+        if target_team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
         # Permission Check (Extended)
         allowed_t1 = ['admin', 'trikot_manager_1']
         allowed_t2 = ['admin', 'trikot_manager_2']
         
+        if custom_category == 'fine':
+             allowed_t1.append('strafen_manager_1')
+             allowed_t2.append('strafen_manager_2')
+
         if target_team == 'team1' and current_user.role not in allowed_t1:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
         if target_team == 'team2' and current_user.role not in allowed_t2:
@@ -4124,57 +4277,63 @@ def add_payment():
 
         team_label = "1. Mannschaft" if target_team == 'team1' else "2. Mannschaft"
             
-        custom_category = request.form.get('payment_category', 'standard')
         base_desc = f"Einzahlung ({team_label})"
         if custom_category == 'game_fee': 
             base_desc = f"Einzahlung (Trikotgeld, {team_label})"
+        elif custom_category == 'fine':
+            base_desc = f"Einzahlung (Strafen-Überzahlung, {team_label})"
         
         player = Player.query.get(player_id)
         if not player:
             raise ValueError("Spieler nicht gefunden.")
 
-        # --- "Zwei Töpfe" Logic: Pay off fines first ---
-        amount_remaining = amount
+        # --- "Zwei Töpfe" Logic: Pay off fines first --- (Ohne Teiltilgung!)
+        
+        general_balance = player.get_general_balance(target_team)
+        available_funds = amount + max(0, general_balance)
+        
+        amount_remaining_from_deposit = amount
         amount_used_for_fines = 0.0
+        amount_withdrawn_from_guthaben = 0.0
 
         # Find unpaid fines for this player and team, ordered by date (Oldest first - FIFO)
-        # We look for transactions with negative amount, category 'fine', and where amount_settled < abs(amount)
-        # We manually check the condition in Python to be safe with Float comparisons or use specific logic
         unpaid_fines = Transaction.query.filter_by(
             player_id=player_id, 
             team=target_team, 
             category='fine'
         ).filter(Transaction.amount < 0).order_by(Transaction.date.asc()).all()
         
-        # Filter for those not fully settled (in Python to avoid complex SQLAlchemy float math issues if possible, though SQL is better)
-        # Also, check if amount settled is None (for old data)
         valid_unpaid_fines = []
         for f in unpaid_fines:
             settled = f.amount_settled if f.amount_settled is not None else 0.0
-            if settled < abs(f.amount) - 0.01: # Epsilon for float comparison
+            if settled < abs(f.amount) - 0.01:
                 valid_unpaid_fines.append(f)
 
         for fine in valid_unpaid_fines:
-            if amount_remaining <= 0:
-                break
-            
             settled = fine.amount_settled if fine.amount_settled is not None else 0.0
             open_amount = abs(fine.amount) - settled
             
-            payment_for_this = min(amount_remaining, open_amount)
-            
-            # Update the fine
-            fine.amount_settled = settled + payment_for_this
-            
-            amount_remaining -= payment_for_this
-            amount_used_for_fines += payment_for_this
+            if available_funds >= open_amount - 0.01:
+                # Volle Tilgung möglich
+                fine.amount_settled = settled + open_amount
+                
+                paid_from_deposit = min(amount_remaining_from_deposit, open_amount)
+                paid_from_guthaben = open_amount - paid_from_deposit
+                
+                amount_remaining_from_deposit -= paid_from_deposit
+                amount_used_for_fines += paid_from_deposit
+                amount_withdrawn_from_guthaben += paid_from_guthaben
+                available_funds -= open_amount
+            else:
+                # Keine Teil-Tilgung!
+                continue
 
         # Create Transactions
         # 1. Payment part for fines (if any)
         if amount_used_for_fines > 0.001:
             db.session.add(Transaction(
                 player_id=player_id, 
-                description=f"Einzahlung (Strafen, {team_label})", 
+                description=f"Einzahlung (Strafen-Tilgung, {team_label})", 
                 amount=amount_used_for_fines, 
                 date=date_val, 
                 team=target_team, 
@@ -4182,27 +4341,49 @@ def add_payment():
                 created_by=current_user.username
             ))
 
-        # 2. Remaining amount (General pot)
-        if amount_remaining > 0.001:
+        # 2. Remaining deposit amount (General pot)
+        if amount_remaining_from_deposit > 0.001:
              db.session.add(Transaction(
                 player_id=player_id, 
                 description=base_desc, 
-                amount=amount_remaining, 
+                amount=amount_remaining_from_deposit, 
                 date=date_val, 
                 team=target_team, 
                 category='general',
                 created_by=current_user.username
+            ))
+             
+        # 3. Cross-Pot Transfer IF Guthaben was used
+        if amount_withdrawn_from_guthaben > 0.001:
+             db.session.add(Transaction(
+                player_id=player_id, 
+                description=f"Auto-Tilgung Guthaben -> Strafe ({team_label})", 
+                amount=amount_withdrawn_from_guthaben, 
+                date=date_val, 
+                team=target_team, 
+                category='fine',
+                created_by='System'
+            ))
+             db.session.add(Transaction(
+                player_id=player_id, 
+                description=f"Auto-Tilgung Guthaben -> Strafe ({team_label})", 
+                amount=-amount_withdrawn_from_guthaben, 
+                date=date_val, 
+                team=target_team, 
+                category='general',
+                created_by='System'
             ))
 
         db.session.commit()
         trigger_image_regeneration()  # Update Cache
         
         # AUDIT LOG
-        log_audit("CREATE", "PAYMENT", f"Einzahlung von {amount:.2f}€ ({team_label}) (Strafen: {amount_used_for_fines:.2f}€, Rest: {amount_remaining:.2f}€) für {player.name} gebucht.")
+        log_audit("CREATE", "PAYMENT", f"Einzahlung {amount:.2f}€ ({team_label}) (Strafen: {amount_used_for_fines:.2f}€, Trikot: {amount_remaining_from_deposit:.2f}€, Verrechnet: {amount_withdrawn_from_guthaben:.2f}€) für {player.name}.")
 
         message = f'Einzahlung von {amount:.2f}€ für {player.name} ({target_team}) verbucht.'
-        if amount_used_for_fines > 0:
-            message += f' Davon {amount_used_for_fines:.2f}€ zur Strafentilgung.'
+        if amount_used_for_fines > 0 or amount_withdrawn_from_guthaben > 0:
+            total_tilgung = amount_used_for_fines + amount_withdrawn_from_guthaben
+            message += f' Es wurden Strafen im Wert von {total_tilgung:.2f}€ getilgt.'
         success = True
 
         # --- PUSH-BENACHRICHTIGUNG AN DEN SPIELER ---
@@ -4249,7 +4430,13 @@ def add_payout():
     try:
         player_id = int(request.form['player_id'])
         amount = float(request.form['amount'])
+        if math.isnan(amount) or math.isinf(amount):
+            return jsonify({'success': False, 'message': 'Ungültiger Betrag.'})
         target_team = request.form.get('team', 'team2')
+
+        if target_team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
+
         date_val = get_date_from_form(request.form)
 
         # Permission Check
@@ -4294,7 +4481,12 @@ def add_team_expense():
     success = False
     try:
         amount=float(request.form['amount']); description=request.form.get('description')
+        if math.isnan(amount) or math.isinf(amount) or amount <= 0:
+            return jsonify({'success': False, 'message': 'Der Betrag muss eine positive Zahl sein.'})
         team = request.form.get('team', 'team2')
+
+        if team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
         # Permission Check
         if team == 'team1' and current_user.role not in ['admin', 'trikot_manager_1']:
@@ -4582,6 +4774,9 @@ def add_fine():
     team = request.form.get('team', 'team2')
     category = request.form.get('category', 'general')
 
+    if team not in ['team1', 'team2']:
+        return jsonify({'success': False, 'message': 'Ungültiges Team.'})
+
     # Permission Check
     if team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
             return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
@@ -4597,7 +4792,10 @@ def add_fine():
         message = 'Eine Strafe mit dieser Beschreibung und diesem Typ existiert bereits für dieses Team.'
     else:
         try:
-            amount = float(amount_str); new_fine = Fine(description=description, amount=amount, type=fine_type, team=team, category=category)
+            amount = float(amount_str)
+            if fine_type == 'money' and (math.isnan(amount) or math.isinf(amount) or amount <= 0):
+                raise ValueError("Ungültiger Betrag.")
+            new_fine = Fine(description=description, amount=amount, type=fine_type, team=team, category=category)
             db.session.add(new_fine)
             log_audit("CREATE", "CATALOG_FINE", f"Katalog-Strafe '{description}' ({amount}, {category}) für {team} erstellt.")
             db.session.commit()
@@ -4696,14 +4894,19 @@ def delete_fine(fine_id):
 # --- Log Deletion (mit Seiten-Reload) ---
 @app.route('/admin/delete/transaction/<int:tx_id>', methods=['POST'])
 @login_required
+@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_transaction(tx_id):
     try:
         tx = Transaction.query.get_or_404(tx_id)
 
         # Permission Check
+        user_roles = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
+
         allowed = False
         # 1. Admin darf alles
-        if current_user.role == 'admin':
+        if 'admin' in user_roles:
             allowed = True
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
@@ -4713,8 +4916,8 @@ def delete_transaction(tx_id):
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
         elif 'Verzugszuschlag' in tx.description:
-            if tx.team == 'team1' and current_user.role in ['strafen_manager_1', 'trikot_manager_1']: allowed = True
-            if tx.team == 'team2' and current_user.role in ['strafen_manager_2', 'trikot_manager_2']: allowed = True
+            if tx.team == 'team1' and user_roles.intersection({'strafen_manager_1', 'trikot_manager_1'}): allowed = True
+            if tx.team == 'team2' and user_roles.intersection({'strafen_manager_2', 'trikot_manager_2'}): allowed = True
 
         if not allowed:
              if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -4747,14 +4950,19 @@ def delete_transaction(tx_id):
 
 @app.route('/admin/delete/transaction-bulk/<int:tx_id>', methods=['POST'])
 @login_required
+@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_transaction_bulk(tx_id):
     try:
         tx = Transaction.query.get_or_404(tx_id)
 
         # 1. PERMISSION CHECK (Copy of delete_transaction logic)
+        user_roles = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
+
         allowed = False
         # 1. Admin darf alles
-        if current_user.role == 'admin':
+        if 'admin' in user_roles:
             allowed = True
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
@@ -4764,8 +4972,8 @@ def delete_transaction_bulk(tx_id):
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
         elif 'Verzugszuschlag' in tx.description:
-            if tx.team == 'team1' and current_user.role in ['strafen_manager_1', 'trikot_manager_1']: allowed = True
-            if tx.team == 'team2' and current_user.role in ['strafen_manager_2', 'trikot_manager_2']: allowed = True
+            if tx.team == 'team1' and user_roles.intersection({'strafen_manager_1', 'trikot_manager_1'}): allowed = True
+            if tx.team == 'team2' and user_roles.intersection({'strafen_manager_2', 'trikot_manager_2'}): allowed = True
         
         if not allowed:
             return jsonify({'success': False, 'message': 'Keine Berechtigung zum Löschen dieses Eintrags.'}), 403
@@ -4774,13 +4982,18 @@ def delete_transaction_bulk(tx_id):
         # We also check created_at proximity to avoid deleting identical bookings from different times (though rare)
         # But users request "Combine Delete", so they likely mean the logical group.
         
-        siblings = Transaction.query.filter(
+        query_filters = [
             Transaction.id != tx.id,
             Transaction.team == tx.team,
             Transaction.date == tx.date,
             Transaction.description == tx.description,
             Transaction.created_by == tx.created_by
-        ).all()
+        ]
+        if tx.created_at:
+            query_filters.append(Transaction.created_at >= (tx.created_at - timedelta(minutes=5)))
+            query_filters.append(Transaction.created_at <= (tx.created_at + timedelta(minutes=5)))
+        
+        siblings = Transaction.query.filter(*query_filters).all()
         
         group_to_delete = [tx] + siblings
         count = len(group_to_delete)
@@ -4809,13 +5022,18 @@ def delete_transaction_bulk(tx_id):
 
 @app.route('/admin/delete/kistl-transaction/<int:tx_id>', methods=['POST'])
 @login_required
+@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_kistl_transaction(tx_id):
     try:
         tx = KistlTransaction.query.get_or_404(tx_id)
         
         # Permission Check
+        user_roles = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
+
         allowed = False
-        if current_user.role == 'admin': 
+        if 'admin' in user_roles: 
             allowed = True
         elif tx.created_by == current_user.username:
             if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
@@ -4848,18 +5066,23 @@ def delete_kistl_transaction(tx_id):
 
 @app.route('/admin/delete/team-expense/<int:tx_id>', methods=['POST'])
 @login_required
+@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
 def delete_team_expense(tx_id):
     try:
         tx = TeamExpense.query.get_or_404(tx_id)
 
         # Permission Check
+        user_roles = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
+
         allowed = False
-        if current_user.role == 'admin': 
+        if 'admin' in user_roles: 
             allowed = True
-        elif tx.team == 'team1' and current_user.role in ['trikot_manager_1', 'strafen_manager_1']: 
+        elif tx.team == 'team1' and 'trikot_manager_1' in user_roles: 
             if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
                 allowed = True
-        elif tx.team == 'team2' and current_user.role in ['trikot_manager_2', 'strafen_manager_2']: 
+        elif tx.team == 'team2' and 'trikot_manager_2' in user_roles: 
             if tx.created_at and tx.created_at > datetime.utcnow() - timedelta(hours=24):
                 allowed = True
         elif tx.created_by == current_user.username:
@@ -5495,7 +5718,7 @@ def edit_user(user_id):
     log_audit("UPDATE", "USER", f"Benutzer '{user.username}' aktualisiert (Rolle: {new_role}, Passwort geändert: {bool(new_password)}).")
     return redirect(url_for('admin'))
 
-@app.route('/admin/app/delete-user/<int:user_id>')
+@app.route('/admin/app/delete-user/<int:user_id>', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def delete_user(user_id):

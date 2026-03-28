@@ -9,11 +9,12 @@ from app import app, db, Player, KasseSetting, Transaction, get_deadline, send_p
 def send_debt_reminders():
     """
     Routine Schulden-Erinnerung (Sonntag 10:00 & Freitag 18:00)
-    Sendet Push-Benachrichtigungen an alle Spieler mit mehr als 9€ Schulden
+    Sendet Push-Benachrichtigungen an alle Spieler mit 10€ oder mehr Schulden
     """
     try:
         with app.app_context():
-            debtors = Player.query.filter(Player.balance <= -9.00).all()
+            # Nur Spieler mit Schulden <= -10.00€ erfassen
+            debtors = Player.query.filter(Player.balance <= -10.00).all()
             if not debtors:
                 print("📅 Routine-Reminder: Keine Schuldner gefunden!")
                 return
