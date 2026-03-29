@@ -398,7 +398,37 @@
                 {% if date_diff_warning %}
                   <div class="alert alert-warning py-1 small">Hinweis: Spieltermine >2 Tage Diff.</div>
                 {% endif %}
-                
+
+                {% if pending_info and (pending_info.t1 or pending_info.t2) %}
+                    {% if pending_info.t1 %}
+                        {% if pending_info.t1.created_by == current_user.username %}
+                            <div class="alert alert-info py-2 small rounded-3 border-0 d-flex align-items-center mb-3">
+                                <i class="bi bi-hourglass-split me-2 fs-5"></i>
+                                <div><strong>Team 1:</strong> Dein Antrag wurde eingereicht und wartet auf Bestätigung.</div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning py-2 small rounded-3 border-0 d-flex align-items-center mb-3">
+                                <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
+                                <div><strong>Team 1:</strong> Es liegt ein Antrag von {{ pending_info.t1.created_by }} vor. Bitte unten prüfen & bestätigen.</div>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if pending_info.t2 %}
+                        {% if pending_info.t2.created_by == current_user.username %}
+                            <div class="alert alert-info py-2 small rounded-3 border-0 d-flex align-items-center mb-3">
+                                <i class="bi bi-hourglass-split me-2 fs-5"></i>
+                                <div><strong>Team 2:</strong> Dein Antrag wurde eingereicht und wartet auf Bestätigung.</div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning py-2 small rounded-3 border-0 d-flex align-items-center mb-3">
+                                <i class="bi bi-exclamation-triangle me-2 fs-5"></i>
+                                <div><strong>Team 2:</strong> Es liegt ein Antrag von {{ pending_info.t2.created_by }} vor. Bitte unten prüfen & bestätigen.</div>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+
                 {% if pending_info and pending_info.t1 %}
                     <form id="reject-form-t1" action="{{ url_for('reject_game_fee', request_id=pending_info.t1.id) }}" method="POST" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/></form>
@@ -484,14 +514,14 @@
                               <input type="checkbox" name="team1_player_ids" value="{{ data.player.id }}" id="t1_paid_{{ data.player.id }}" style="display:none;" {% if p.get('is_team1') %}checked{% endif %}>
                               <input type="checkbox" name="team1_free_ids" value="{{ data.player.id }}" id="t1_free_{{ data.player.id }}" style="display:none;" {% if p.get('is_team1_free') %}checked{% endif %}>
                               <!-- Tristate Btn T1 -->
-                              <button type="button" class="btn btn-sm p-0 mx-auto tristate-btn" style="width:2em;height:2em;border-radius:50%;border:1px solid #ced4da;" onclick="cycleState('team1', {{ data.player.id }})" id="btn_team1_{{ data.player.id }}" data-team="team1" data-id="{{ data.player.id }}"></button>
+                              <button type="button" class="btn btn-sm p-0 mx-auto tristate-btn {% if locked_t1 %}locked-btn{% endif %}" style="width:2em;height:2em;border-radius:50%;border:1px solid #ced4da;" onclick="cycleState('team1', {{ data.player.id }})" id="btn_team1_{{ data.player.id }}" data-team="team1" data-id="{{ data.player.id }}" {% if locked_t1 %}disabled{% endif %}></button>
                                {% if pending_info and pending_info.t1 and p.get('is_team1') %}<span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.6em">Antrag</span>{% endif %}
                             </td>
                             <td class="text-center">
                               <!-- Hidden Inputs T2 -->
                               <input type="checkbox" name="team2_player_ids" value="{{ data.player.id }}" id="t2_paid_{{ data.player.id }}" style="display:none;" {% if p.get('checked') %}checked{% endif %}>
                               <input type="checkbox" name="team2_free_ids" value="{{ data.player.id }}" id="t2_free_{{ data.player.id }}" style="display:none;" {% if p.get('checked_free') %}checked{% endif %}>
-                              <button type="button" class="btn btn-sm p-0 mx-auto tristate-btn" style="width:2em;height:2em;border-radius:50%;border:1px solid #ced4da;" onclick="cycleState('team2', {{ data.player.id }})" id="btn_team2_{{ data.player.id }}" data-team="team2" data-id="{{ data.player.id }}"></button>
+                              <button type="button" class="btn btn-sm p-0 mx-auto tristate-btn {% if locked_t2 %}locked-btn{% endif %}" style="width:2em;height:2em;border-radius:50%;border:1px solid #ced4da;" onclick="cycleState('team2', {{ data.player.id }})" id="btn_team2_{{ data.player.id }}" data-team="team2" data-id="{{ data.player.id }}" {% if locked_t2 %}disabled{% endif %}></button>
                                {% if pending_info and pending_info.t2 and p.get('checked') %}<span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.6em">Antrag</span>{% endif %}
                             </td>
                           </tr>
@@ -1221,15 +1251,21 @@ function toggleTeam(team){
    }else{
        body.style.opacity='1'; body.style.pointerEvents='auto';
        document.querySelectorAll('input[name^="'+team+'_"]').forEach(i=>{i.disabled=false;});
-       document.querySelectorAll('button[id^="btn_'+team+'_"]').forEach(b=>{b.disabled=false;});
+       document.querySelectorAll('button[id^="btn_'+team+'_"]').forEach(b=>{
+           if(!b.classList.contains('locked-btn')){
+               b.disabled=false;
+           }
+       });
    }
    window.updateGameFeeCounts && window.updateGameFeeCounts();
 }
 window.updateGameFeeCounts=function(){
-   var t1=document.querySelectorAll('input[name="team1_player_ids"]:checked').length + document.querySelectorAll('input[name="team1_free_ids"]:checked').length;
-   var t2=document.querySelectorAll('input[name="team2_player_ids"]:checked').length + document.querySelectorAll('input[name="team2_free_ids"]:checked').length;
-   if(document.getElementById('count-team1')) document.getElementById('count-team1').textContent="Team 1: "+t1;
-   if(document.getElementById('count-team2')) document.getElementById('count-team2').textContent="Team 2: "+t2;
+   var t1_paid = document.querySelectorAll('input[name="team1_player_ids"]:checked').length;
+   var t1_free = document.querySelectorAll('input[name="team1_free_ids"]:checked').length;
+   var t2_paid = document.querySelectorAll('input[name="team2_player_ids"]:checked').length;
+   var t2_free = document.querySelectorAll('input[name="team2_free_ids"]:checked').length;
+   if(document.getElementById('count-team1')) document.getElementById('count-team1').innerHTML="Team 1: <strong>"+t1_paid+"x Zahlen, "+t1_free+"x Frei</strong>";
+   if(document.getElementById('count-team2')) document.getElementById('count-team2').innerHTML="Team 2: <strong>"+t2_paid+"x Zahlen, "+t2_free+"x Frei</strong>";
 }
 
 // 2. FINE CATALOG FILTER
@@ -1353,8 +1389,39 @@ if (paymentTeamSelect && paymentPlayerSelect) {
 // Init Tristate/GameFee on Load
 document.addEventListener("DOMContentLoaded",function(){
     document.querySelectorAll('.tristate-btn').forEach(b=>updateButtonVisuals(b.getAttribute('data-team'),b.getAttribute('data-id')));
+    window.updateGameFeeCounts && window.updateGameFeeCounts();
     var sf1=document.getElementById('spielfrei_team1'); if(sf1&&sf1.checked) toggleTeam('team1');
     var sf2=document.getElementById('spielfrei_team2'); if(sf2&&sf2.checked) toggleTeam('team2');
+
+    // Client-side Validation to prevent losing selections
+    const gameForm = document.getElementById('game-fee-form');
+    if(gameForm) {
+        gameForm.addEventListener('submit', function(e) {
+            // Team 1
+            let t1_frei = document.getElementById('spielfrei_team1') && document.getElementById('spielfrei_team1').checked;
+            let t1_checked = document.querySelectorAll('input[name="team1_player_ids"]:checked').length + 
+                             document.querySelectorAll('input[name="team1_free_ids"]:checked').length;
+            let t1_opp = document.getElementById('input_opp_team1') ? document.getElementById('input_opp_team1').value.trim() : '';
+            
+            if(!t1_frei && t1_checked > 0 && !t1_opp) {
+                e.preventDefault();
+                alert("Bitte den Gegner für die 1. Mannschaft eingeben!");
+                return false;
+            }
+
+            // Team 2
+            let t2_frei = document.getElementById('spielfrei_team2') && document.getElementById('spielfrei_team2').checked;
+            let t2_checked = document.querySelectorAll('input[name="team2_player_ids"]:checked').length + 
+                             document.querySelectorAll('input[name="team2_free_ids"]:checked').length;
+            let t2_opp = document.getElementById('input_opp_team2') ? document.getElementById('input_opp_team2').value.trim() : '';
+
+            if(!t2_frei && t2_checked > 0 && !t2_opp) {
+                e.preventDefault();
+                alert("Bitte den Gegner für die 2. Mannschaft eingeben!");
+                return false;
+            }
+        });
+    }
 
     // Restore Tabs
     var activeMain = localStorage.getItem('adm_main_tab');

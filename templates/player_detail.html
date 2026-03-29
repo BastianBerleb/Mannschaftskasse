@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
 <style>
     /* Shared Design System overrides with premium.css */
@@ -524,41 +524,7 @@
     </div>
 </div>
 
-<!-- 7. TRANSACTION LIST (New Design) -->
-<div class="tx-card mb-5">
-    {% for tx in all_transactions %}
-    <div class="tx-item">
-        <div class="d-flex flex-column" style="max-width: 65%;">
-            <span class="tx-desc text-truncate">
-                {{ tx.desc }}
-                {% if tx.is_fine_unpaid %} <span class="badge bg-danger rounded-pill ms-1" style="font-size:0.5em; vertical-align: text-top;">OFFEN</span> {% endif %}
-                {% if tx.did_not_play %} <span class="badge bg-secondary ms-1 p-1 text-wrap" style="font-size:0.6em; font-weight:normal; max-width: 100%;">Hat nicht gespielt oder hat bei der anderen Mannschaft gespielt</span> {% endif %}
-            </span>
-            <span class="tx-date">
-                {{ tx.date.strftime('%d.%m.%y') }}
-                {% if tx.is_fine_unpaid and tx.deadline %} · <span class="text-danger">Bis {{ tx.deadline.strftime('%d.%m.') }}</span>{% endif %}
-            </span>
-        </div>
-        
-        <div class="text-end">
-             <div class="tx-amount {% if tx.is_carry_over %}text-muted{% elif tx.type == 'money' and tx.amount_raw < 0 %}text-danger{% elif tx.type == 'money' and tx.amount_raw > 0 %}text-success{% else %}transaction-kistl{% endif %}">
-                {{ tx.val }}
-            </div>
-            {% if tx.type == 'money' and tx.running_balance %}
-            <div class="text-muted small" style="font-size: 0.7rem;">
-                {{ tx.running_balance }}
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% else %}
-    <div class="p-4 text-center text-muted">
-        <i class="bi bi-clock-history fs-1 opacity-25 mb-2 d-block"></i>
-        Keine Einträge für {{ selected_season }}
-    </div>
-    {% endfor %}
-</div>
-
+{% include '_tx_tabs.html' %}
 {% endblock %}
 
 {% block scripts %}

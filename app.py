@@ -1,4 +1,4 @@
-from flask import send_file
+﻿from flask import send_file
 from io import BytesIO
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -112,6 +112,8 @@ def load_fupa_cache():
             with open(FUPA_CACHE_FILE, 'r') as f:
                 data = json.load(f)
                 ts = datetime.fromisoformat(data['timestamp'])
+                if ts.tzinfo is None:
+                    ts = GERMAN_TZ.localize(ts)
                 # fupa_logger.info("Fupa Cache loaded from disk.")
                 return data['data'], ts
         except Exception as e:
@@ -696,9 +698,30 @@ def get_latest_fupa_game_data(season_str):
             # return fupa_data  <-- REMOVED: Don't stop here, try Team 1!
             
         today = get_local_now().date()
-        # Safe selection logic even if team2_items is empty
-        team2_match = next((g for g in team2_items if g.get('kickoff') and today - timedelta(days=7) <= datetime.fromisoformat(g.get('kickoff').replace('Z', '+00:00')).date() <= today), team2_items[0] if team2_items else None)
         
+        parsed_t2 = []
+        for item in team2_items:
+            k_str = item.get('kickoff')
+            if k_str:
+                try:
+                    dt = datetime.fromisoformat(k_str.replace('Z', '+00:00')).date()
+                    parsed_t2.append((item, dt))
+                except:
+                    continue
+        
+        parsed_t2.sort(key=lambda x: x[1], reverse=True)
+        
+        team2_match = None
+        if parsed_t2:
+            for item, dt in parsed_t2:
+                if dt <= today:
+                    team2_match = item
+                    break
+            
+            if not team2_match:
+                # Da parsed_t2 descending (Neueste zuerst) ist, ist das Element am Ende (-1) das Spiel,
+                # das von allen Spielen in der Zukunft am zeitnächsten zu heute liegt.
+                team2_match = parsed_t2[-1][0]
         team2_kickoff = None
         if team2_match:
              try:
@@ -1720,111 +1743,108 @@ def player_detail(player_id):
     # Gesamter Übertrag = Transaktionen vor Saison + Startguthaben
     total_carryover = balance_before_season + startguthaben
     
+    # Team Splits for carryover
+    carry_t1 = (db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.player_id == player_id, Transaction.team == 'team1', Transaction.date < g.start_date
+    ).scalar() or 0.0) + (db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.player_id == player_id, Transaction.team == 'team1', Transaction.description == "Startguthaben"
+    ).scalar() or 0.0)
+
+    carry_t2 = (db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.player_id == player_id, db.or_(Transaction.team != 'team1', Transaction.team == None), Transaction.date < g.start_date
+    ).scalar() or 0.0) + (db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.player_id == player_id, db.or_(Transaction.team != 'team1', Transaction.team == None), Transaction.description == "Startguthaben"
+    ).scalar() or 0.0)
+
     kistl_before_season = db.session.query(func.sum(KistlTransaction.amount)).filter(
-        KistlTransaction.player_id == player_id, 
+        KistlTransaction.player_id == player_id,
         KistlTransaction.date < g.start_date
     ).scalar() or 0
     # --- START NEUE TRANSAKTIONSLOGIK MIT LAUFENDEM SALDO ---
-    
+
     seasonal_kistl_tx = player.kistl_transactions.filter(KistlTransaction.date.between(g.start_date, g.end_date)).all()
 
-    # 1. Sammeln aller Einträge mit Rohdaten für Berechnung
-    processed_transactions = []
-    
-    # Startguthaben / Übertrag (Geld)
-    if total_carryover != 0:
-        processed_transactions.append({
-            'date': g.start_date,
-            'desc': 'Übertrag aus Vorsaison(en)',
-            'amount_raw': total_carryover,
-            'type': 'money',
-            'is_carry_over': True,
-            'category': None
-        })
-        
-    # Saisonale Geld-Transaktionen
-    for tx in seasonal_money_tx:
-        if tx.description == 'Startguthaben': continue
-        
-        entry = {
-            'date': tx.date,
-            'desc': tx.description,
-            'amount_raw': tx.amount,
-            'type': 'money',
-            'category': tx.category,
-            'is_fine_unpaid': False,
-            'did_not_play': False
-        }
-        
-        if tx.amount == 0 and tx.description and 'gg.' in tx.description.lower():
-            entry['did_not_play'] = True
-        
-        # Deadline Logik
-        if tx.category == 'fine' and tx.amount < 0:
-             settled = tx.amount_settled if tx.amount_settled is not None else 0.0
-             if settled < abs(tx.amount) - 0.01:
-                 # Not fully paid, check if doubled
-                 if tx.doubled_by_id is None:
-                     entry['is_fine_unpaid'] = True
-                     entry['deadline'] = get_deadline(tx.date)
-                     entry['days_left'] = (entry['deadline'] - get_local_now().date()).days
-        
-        processed_transactions.append(entry)
-        
-    # SORTIERUNG AUFSTEIGEND für Saldo-Berechnung
-    # Wenn Datum gleich: Übertrag (is_carry_over=True) kommt zuerst.
-    # "not x.get..." : True -> False(0), False -> True(1). 0 kommt vor 1. Passt.
-    processed_transactions.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)))
-    
-    current_balance = 0.0
-    for entry in processed_transactions:
-        # Nur Geldtransaktionen beeinflussen den Saldo
-        if entry['type'] == 'money':
-            current_balance += entry['amount_raw']
-            entry['running_balance_raw'] = current_balance
-            entry['running_balance'] = f"{current_balance:,.2f} €"
-        
-        entry['val'] = f"{entry['amount_raw']:,.2f} €"
-        
-    # KISTL Logic (beeinflusst Geld-Saldo nicht)
-    if kistl_before_season != 0:
-        processed_transactions.append({
-            'date': g.start_date,
-            'desc': 'Kistl-Übertrag aus Vorsaison(en)',
-            'val': f"{kistl_before_season} Kistl",
-            'type': 'kistl',
-            'is_carry_over': True
-        })
+    def build_tx_list(tx_collection, carryover_money, include_kistl=False):
+        processed = []
+        if carryover_money != 0:
+            processed.append({
+                'date': g.start_date,
+                'desc': 'Übertrag aus Vorsaison(en)',
+                'amount_raw': carryover_money,
+                'type': 'money',
+                'is_carry_over': True,
+                'category': None
+            })
 
-    for k in seasonal_kistl_tx:
-        processed_transactions.append({
-            'date': k.date,
-            'desc': k.description,
-            'val': f"{k.amount} Kistl",
-            'type': 'kistl'
-        })
-        
-    # Finale Sortierung ABSTEIGEND für Anzeige (Neueste zuerst)
-    processed_transactions.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)), reverse=True)
-    
-    all_transactions = processed_transactions
-    
-    # --- ENDE NEUE TRANSAKTIONSLOGIK ---
-    
-    # --- KORRIGIERTE LOGIK ---
-    # Wir brauchen die Liste der abonnierten Spieler nicht mehr im Template,
-    # da das JavaScript die Info jetzt selbst vom Server holt.
-    # Wir übergeben hier nur eine leere Liste, um Fehler zu vermeiden,
-    # falls alte Referenzen noch irgendwo existieren.
-    
+        for tx in tx_collection:
+            if tx.description == 'Startguthaben': continue
+
+            entry = {
+                'date': tx.date,
+                'desc': tx.description,
+                'amount_raw': tx.amount,
+                'type': 'money',
+                'category': tx.category,
+                'is_fine_unpaid': False,
+                'did_not_play': False
+            }
+
+            if tx.amount == 0 and tx.description and 'gg.' in tx.description.lower():
+                entry['did_not_play'] = True
+
+            if tx.category == 'fine' and tx.amount < 0:
+                 settled = tx.amount_settled if tx.amount_settled is not None else 0.0
+                 if settled < abs(tx.amount) - 0.01:
+                     if tx.doubled_by_id is None:
+                         entry['is_fine_unpaid'] = True
+                         entry['deadline'] = get_deadline(tx.date)
+                         entry['days_left'] = (entry['deadline'] - get_local_now().date()).days
+
+            processed.append(entry)
+
+        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)))
+
+        current_balance = 0.0
+        for entry in processed:
+            if entry['type'] == 'money':
+                current_balance += entry['amount_raw']
+                entry['running_balance_raw'] = current_balance
+                entry['running_balance'] = f"{current_balance:,.2f} €"
+            entry['val'] = f"{entry['amount_raw']:,.2f} €"
+
+        if include_kistl:
+            if kistl_before_season != 0:
+                processed.append({
+                    'date': g.start_date,
+                    'desc': 'Kistl-Übertrag aus Vorsaison(en)',
+                    'val': f"{kistl_before_season} Kistl",
+                    'type': 'kistl',
+                    'is_carry_over': True
+                })
+            for k in seasonal_kistl_tx:
+                processed.append({
+                    'date': k.date,
+                    'desc': k.description,
+                    'val': f"{k.amount} Kistl",
+                    'type': 'kistl'
+                })
+
+        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)), reverse=True)
+        return processed
+
+    all_transactions = build_tx_list(seasonal_money_tx, total_carryover, include_kistl=True)
+    tx_t1_list = build_tx_list(tx_t1, carry_t1, include_kistl=False)
+    tx_t2_list = build_tx_list(tx_t2, carry_t2, include_kistl=False)
     return render_template('player_detail.html', 
                            player=player, 
                            all_transactions=all_transactions, 
+                           transactions_t1=tx_t1_list,
+                           transactions_t2=tx_t2_list,
                            settings=settings,
                            player_stats=player_stats,
                            stats_t1=stats_t1,
                            stats_t2=stats_t2)
-        
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated: return redirect(url_for('index'))
@@ -3273,6 +3293,172 @@ def schulden_image():
         app.logger.error('Fehler in schulden_image: %s', tb)
         return f"Error generating image:\n{tb}", 500
 
+def _generate_catalog_image_bytes(team):
+    """Generiert ein PNG mit dem Strafenkatalog des Teams."""
+    try:
+        if Image is None or ImageDraw is None or ImageFont is None:
+            return None
+
+        title = 'Strafenkatalog (1. Mannschaft)' if team == 'team1' else 'Strafenkatalog (2. Mannschaft)'
+        if team == 'team1':
+            fines = Fine.query.filter(Fine.team == 'team1').order_by(Fine.type, Fine.description).all()
+        else:
+            fines = Fine.query.filter((Fine.team == 'team2') | (Fine.team == None)).order_by(Fine.type, Fine.description).all()
+
+        if not fines:
+            # Fallback falls leer
+            img = Image.new('RGB', (600, 100), color=(250, 251, 252))
+            draw = ImageDraw.Draw(img)
+            draw.text((20, 40), f"Keine Strafen für {title} definiert.", fill=(0,0,0))
+            im_io = io.BytesIO()
+            img.save(im_io, 'PNG')
+            return im_io.getvalue()
+
+        # Grouping
+        fines_game = [f for f in fines if f.category == 'game']
+        fines_training = [f for f in fines if f.category == 'training']
+        fines_general = [f for f in fines if f.category == 'general']
+
+        categories = []
+        if fines_game: categories.append(("Spieltag", fines_game, "⚽"))
+        if fines_training: categories.append(("Training", fines_training, "🏃"))
+        if fines_general: categories.append(("Allgemeines", fines_general, "📝"))
+
+        S = 2  
+        width = 800 * S
+        
+        COLOR_BG = (250, 251, 252)
+        COLOR_HEADER_BG_TOP = (30, 41, 59)
+        COLOR_HEADER_BG_BOT = (15, 23, 42)
+        COLOR_HEADER_TEXT = (241, 245, 249)
+        COLOR_TEXT = (33, 37, 41)
+        COLOR_SECTION_BG = (241, 245, 249)
+        COLOR_LINE = (226, 232, 240)
+        COLOR_ACCENT = (16, 185, 129)
+
+        header_height = 100 * S
+        accent_line_height = 3 * S
+        section_header_height = 50 * S
+        row_height = 40 * S
+        
+        total_height = header_height + accent_line_height + 40 * S
+        for cat_name, cat_fines, icon in categories:
+            total_height += section_header_height + len(cat_fines) * row_height + 30 * S
+        
+        img = Image.new('RGB', (width, total_height), COLOR_BG)
+        draw = ImageDraw.Draw(img)
+
+        # Helper font loader
+        def load_font(name_list, size):
+            for name in name_list:
+                try: return ImageFont.truetype(name, size)
+                except: pass
+                paths = [
+                    os.path.join(basedir, 'static', 'app', 'fonts', name),
+                    f'C:\\Windows\\Fonts\\{name}',
+                    f'/usr/share/fonts/truetype/{name.split(".")[0]}/{name}',
+                    f'/usr/share/fonts/truetype/dejavu/{name}',
+                ]
+                for p in paths:
+                    try: return ImageFont.truetype(p, size)
+                    except: pass
+            return ImageFont.load_default()
+
+        font_title = load_font(['arialbd.ttf', 'DejaVuSans-Bold.ttf'], 28 * S)
+        font_date = load_font(['ariali.ttf', 'DejaVuSans-Oblique.ttf'], 14 * S)
+        font_section = load_font(['arialbd.ttf', 'DejaVuSans-Bold.ttf'], 20 * S)
+        font_fine_b = load_font(['arialbd.ttf', 'DejaVuSans-Bold.ttf'], 16 * S)
+        font_fine = load_font(['arial.ttf', 'DejaVuSans.ttf'], 16 * S)
+        font_amount = load_font(['arialbd.ttf', 'DejaVuSans-Bold.ttf'], 16 * S)
+        
+        # Segoe UI Emoji für Windows, als Fallback normal
+        font_emoji = load_font(['seguiemj.ttf', 'arialbd.ttf', 'DejaVuSans-Bold.ttf'], 20 * S)
+
+        for y in range(header_height):
+            r = int(COLOR_HEADER_BG_TOP[0] + (COLOR_HEADER_BG_BOT[0] - COLOR_HEADER_BG_TOP[0]) * y / header_height)
+            g = int(COLOR_HEADER_BG_TOP[1] + (COLOR_HEADER_BG_BOT[1] - COLOR_HEADER_BG_TOP[1]) * y / header_height)
+            b = int(COLOR_HEADER_BG_TOP[2] + (COLOR_HEADER_BG_BOT[2] - COLOR_HEADER_BG_TOP[2]) * y / header_height)
+            draw.line([(0, y), (width, y)], fill=(r,g,b))
+            
+        draw.rectangle([0, header_height, width, header_height + accent_line_height], fill=COLOR_ACCENT)
+
+        draw.text((30 * S, 25 * S), title, font=font_title, fill=COLOR_HEADER_TEXT)
+        date_str = datetime.now().strftime('%d.%m.%Y %H:%M')
+        draw.text((30 * S, 65 * S), f'Stand: {date_str}', font=font_date, fill=(148, 163, 184))
+
+        y_offset = header_height + accent_line_height + 30 * S
+
+        for cat_name, cat_fines, icon in categories:
+            
+            # Simple rectangle since rounded_rectangle might not be in old Pillow
+            try:
+                draw.rounded_rectangle([20 * S, y_offset, width - 20 * S, y_offset + section_header_height], radius=8*S, fill=COLOR_SECTION_BG)
+            except AttributeError:
+                draw.rectangle([20 * S, y_offset, width - 20 * S, y_offset + section_header_height], fill=COLOR_SECTION_BG)
+
+            # Emojis bereiten in manchen Pillow/OS-Kombinationen Probleme (Kästchen), daher zeichnen wir hier nur Text im Bild
+            draw.text((30 * S, y_offset + 12 * S), f"{cat_name}", font=font_section, fill=COLOR_TEXT)
+                
+            y_offset += section_header_height + 15 * S
+            
+            for index, fine in enumerate(cat_fines):
+                desc = fine.description
+                if fine.type == 'money': amount = f"{fine.amount:.2f} €"
+                else: amount = f"{int(fine.amount)} Kistl"
+                
+                # truncate
+                max_w = width - 200 * S
+                
+                # Handling Pillow getlength / getsize compatibility
+                def text_width(f, t):
+                    try: return f.getlength(t)
+                    except AttributeError: return f.getsize(t)[0]
+
+                while text_width(font_fine, desc) > max_w and len(desc) > 3:
+                    desc = desc[:-4] + "..."
+                
+                draw.text((40 * S, y_offset + 10 * S), desc, font=font_fine, fill=COLOR_TEXT)
+                
+                w_amount = text_width(font_amount, amount)
+                draw.text((width - 40 * S - w_amount, y_offset + 10 * S), amount, font=font_amount, fill=COLOR_TEXT)
+                
+                if index < len(cat_fines) - 1:
+                    draw.line([30 * S, y_offset + row_height, width - 30 * S, y_offset + row_height], fill=COLOR_LINE)
+                y_offset += row_height
+            
+            y_offset += 20 * S
+
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='PNG')
+        return img_byte_arr.getvalue()
+    except Exception as e:
+        app.logger.error(f'Fehler in _generate_catalog_image_bytes: {traceback.format_exc()}')
+        return None
+
+@app.route('/strafenkatalog/image')
+@login_required
+def strafenkatalog_image():
+    try:
+        team = request.args.get('team', 'team1')
+        img_bytes = _generate_catalog_image_bytes(team)
+        if not img_bytes:
+             img = Image.new('RGB', (600, 100), color=(255, 200, 200))
+             d = ImageDraw.Draw(img)
+             d.text((10, 40), "Fehler beim Erstellen des Bildes.", fill=(0,0,0))
+             im_io = io.BytesIO()
+             img.save(im_io, 'PNG') 
+             resp = make_response(send_file(io.BytesIO(im_io.getvalue()), mimetype='image/png'))
+             resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+             return resp
+
+        resp = make_response(send_file(io.BytesIO(img_bytes), mimetype='image/png'))
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+    except Exception as e:
+        tb = traceback.format_exc()
+        app.logger.error(f'Fehler in strafenkatalog_image: {tb}')
+        return str(e), 500
+
 
 @app.route('/strafenkatalog')
 @app.route('/strafenkatalog/')
@@ -3358,7 +3544,7 @@ def force_update_fupa_cache(season_str):
         fupa_cache["timestamp"] = new_ts
         save_fupa_cache_to_disk(live_fupa_data, new_ts)
         
-        msg = f"T1: {live_fupa_data.get('team1_date')} ({live_fupa_data.get('team1_opponent')}) | T2: {live_fupa_data.get('team2_date')}"
+        msg = f"T1: {live_fupa_data.get('team1_date')} ({live_fupa_data.get('team1_opponent')}) | T2: {live_fupa_data.get('team2_date')} ({live_fupa_data.get('team2_opponent')})"
         fupa_logger.info(f"Fupa Cache FORCED UPDATE. {msg}")
         return True, f"Daten aktualisiert: {msg}"
     else:
@@ -3430,6 +3616,9 @@ def admin():
         # Fallback auf Memory, falls Disk-Read scheitert
         fupa_raw_data = fupa_cache.get("data")
         last_update_ts = fupa_cache.get("timestamp")
+
+    if last_update_ts and last_update_ts.tzinfo is None:
+        last_update_ts = GERMAN_TZ.localize(last_update_ts)
 
     # Check ob Update notwendig (wenn Daten veraltet oder nicht vorhanden)
     if not last_update_ts or (now - last_update_ts > cache_duration):
@@ -3766,8 +3955,8 @@ def admin():
             is_strafen_manager=is_strafen_manager,
             target_team_value=target_team_value,
             target_team_name=target_team_name,
-            latest_game_date=latest_game_date_team1 if target_team_value == 'team1' else latest_game_date,
-            latest_game_opponent=latest_game_opponent_team1 if target_team_value == 'team1' else latest_game_opponent,
+            latest_game_date=latest_game_date,
+            latest_game_opponent=latest_game_opponent,
             active_players=active_players,
             fines=fines_team1 if target_team_value == 'team1' else fines_team2,
             players_for_game_fee=players_for_game_fee,
@@ -4938,7 +5127,7 @@ def delete_transaction(tx_id):
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(days=30):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(days=30):
                 allowed = True
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
@@ -4994,7 +5183,7 @@ def delete_transaction_bulk(tx_id):
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(days=30):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(days=30):
                 allowed = True
                 
         # 3. Ausnahme: Verzugszuschlag darf IMMER von Strafenmanagern/Trikotmanagern gelöscht werden
@@ -5063,7 +5252,7 @@ def delete_kistl_transaction(tx_id):
         if 'admin' in user_roles: 
             allowed = True
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
                 allowed = True
         
         if not allowed:
@@ -5107,13 +5296,13 @@ def delete_team_expense(tx_id):
         if 'admin' in user_roles: 
             allowed = True
         elif tx.team == 'team1' and 'trikot_manager_1' in user_roles: 
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
                 allowed = True
         elif tx.team == 'team2' and 'trikot_manager_2' in user_roles: 
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
                 allowed = True
         elif tx.created_by == current_user.username:
-            if tx.created_at and tx.created_at > get_local_now() - timedelta(hours=24):
+            if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
                 allowed = True
 
         if not allowed:

@@ -233,18 +233,75 @@
   <!-- Inhalt Zweite -->
   <div class="tab-pane fade {% if not default_team1 %}show active{% endif %}" id="team2-content" role="tabpanel">
       {{ render_fines_list(fines_team2) }}
+      <div class="mt-4 text-center">
+          <button class="btn btn-outline-primary shadow-sm mx-1" onclick="copyCatalogImage('team2')">
+              📸 Bild kopieren
+          </button>
+          <button class="btn btn-outline-secondary shadow-sm mx-1" onclick="downloadCatalogImage('team2')">
+              ⬇️ Bild speichern
+          </button>
+      </div>
   </div>
 
   <!-- Inhalt Erste -->
   <div class="tab-pane fade {% if default_team1 %}show active{% endif %}" id="team1-content" role="tabpanel">
       {{ render_fines_list(fines_team1) }}
+      <div class="mt-4 text-center">
+          <button class="btn btn-outline-primary shadow-sm mx-1" onclick="copyCatalogImage('team1')">
+              📸 Bild kopieren
+          </button>
+          <button class="btn btn-outline-secondary shadow-sm mx-1" onclick="downloadCatalogImage('team1')">
+              ⬇️ Bild speichern
+          </button>
+      </div>
   </div>
 </div>
 
-<div class="mt-4 text-center">
+<div class="mt-5 text-center">
     <a href="{{ url_for('index') }}" class="btn btn-secondary btn-lg rounded-pill px-4 shadow-sm">
         « Zurück zur Übersicht
     </a>
 </div>
+
+<script>
+async function copyCatalogImage(team) {
+    try {
+        const btn = event.currentTarget;
+        const origText = btn.innerHTML;
+        btn.innerHTML = '⏳ Generiere...';
+        btn.disabled = true;
+
+        const response = await fetch('/strafenkatalog/image?team=' + team);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const blob = await response.blob();
+        
+        try {
+            await navigator.clipboard.write([
+                new ClipboardItem({ [blob.type]: blob })
+            ]);
+            alert('Strafenkatalog-Bild in die Zwischenablage kopiert!');
+        } catch (clipErr) {
+            console.error('Clipboard API Error:', clipErr);
+            alert('Bildkopie fehlgeschlagen. Dein Browser erlaubt evtl. kein direktes Kopieren von Bildern. Bitte "Bild speichern" nutzen.');
+        }
+
+        btn.innerHTML = origText;
+        btn.disabled = false;
+    } catch (err) {
+        console.error(err);
+        alert('Fehler beim Generieren des Bildes.');
+        const btn = event.currentTarget;
+        btn.innerHTML = '📸 Bild kopieren';
+        btn.disabled = false;
+    }
+}
+
+function downloadCatalogImage(team) {
+    const link = document.createElement('a');
+    link.href = '/strafenkatalog/image?team=' + team;
+    link.download = `Strafenkatalog_${team}.png`;
+    link.click();
+}
+</script>
 
 {% endblock %}
