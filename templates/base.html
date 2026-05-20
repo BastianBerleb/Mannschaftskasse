@@ -234,7 +234,17 @@
 			{% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer'] and current_user.role != 'guest' %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('schulden') }}">Gruppenerinnerung</a></li>
 			{% endif %}
-            {% if current_user.role not in ['player', 'guest', 'viewer'] %}
+            
+            {% set has_admin_light = (current_user.role == 'admin_light') or (current_user.secondary_role == 'admin_light') or (current_user.tertiary_role == 'admin_light') %}
+            {% if has_admin_light %}
+            <li class="nav-item ms-lg-2" id="nav-item-admin-light">
+              <a class="nav-link text-secondary px-3 mt-1 mb-1 mt-lg-0 mb-lg-0 text-center" href="{{ url_for('switch_role', target_role='admin_light', next=url_for('admin')) }}">
+                <i class="bi bi-sliders me-1"></i> Verwaltung (Light)
+              </a>
+            </li>
+            {% endif %}
+
+            {% if current_user.role not in ['player', 'guest', 'viewer', 'admin_light'] %}
             <li class="nav-item ms-lg-2" id="nav-item-admin">
               <a class="nav-link fw-bold text-warning border border-warning rounded px-3 mt-1 mb-1 mt-lg-0 mb-lg-0 text-center" href="{{ url_for('admin') }}" style="background-color: rgba(255,193,7,0.1);">
                 {% if current_user.role in ['strafen_manager_1', 'strafen_manager_2'] %}
@@ -295,6 +305,7 @@
                 <li><h6 class="dropdown-header">Rolle wechseln</h6></li>
                 <li><a class="dropdown-item {% if current_user.role == 'admin' %}active{% endif %}" href="{{ url_for('switch_role', target_role='reset') }}">Admin (Reset)</a></li>
                 <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='admin_light') }}">Admin Light</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='trikot_manager_2') }}">Trikotmanager 2</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='trikot_manager_1') }}">Trikotmanager 1</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('switch_role', target_role='strafen_manager_2') }}">Strafenmanager 2</a></li>

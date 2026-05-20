@@ -48,16 +48,24 @@
                         {% if 'admin' in u_roles %}
                             {% set show_delete = True %}
                         {% else %}
-                            {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
-                                {% if tx.team == 'team1' and ('trikot_manager_1' in u_roles or 'strafen_manager_1' in u_roles) %}
-                                    {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                            {% set max_diff = 2592000 if tx.__class__.__name__ == 'Transaction' else 86400 %}
+                            
+                            {% if tx.__class__.__name__ == 'Transaction' and 'Verzugszuschlag' in tx.description %}
+                                {% if tx.team == 'team1' and ('strafen_manager_1' in u_roles or 'trikot_manager_1' in u_roles) %}{% set show_delete = True %}{% endif %}
+                                {% if tx.team == 'team2' and ('strafen_manager_2' in u_roles or 'trikot_manager_2' in u_roles) %}{% set show_delete = True %}{% endif %}
+                            {% endif %}
+                            
+                            {% if not show_delete and tx.__class__.__name__ == 'TeamExpense' %}
+                                {% if tx.team == 'team1' and 'trikot_manager_1' in u_roles %}
+                                    {% if tx.created_at %}{% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}{% endif %}
                                 {% endif %}
-                                {% if tx.team == 'team2' and ('trikot_manager_2' in u_roles or 'strafen_manager_2' in u_roles) %}
-                                    {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                                {% if tx.team == 'team2' and 'trikot_manager_2' in u_roles %}
+                                    {% if tx.created_at %}{% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}{% endif %}
                                 {% endif %}
                             {% endif %}
+                            
                             {% if not show_delete and tx.created_by == current_user.username and tx.created_at %}
-                                {% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                                {% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}
                             {% endif %}
                         {% endif %}
 

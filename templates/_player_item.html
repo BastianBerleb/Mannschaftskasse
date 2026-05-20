@@ -94,18 +94,20 @@
                 <button type="button" class="btn btn-sm btn-primary manual-ajax-trigger flex-grow-1" data-form-id="edit-form-{{ player.id }}">Speichern</button>
                 
                 {% if player.is_active %}
-                {% if current_user.role == 'admin' %}
+                {% if current_user.role in ['admin', 'admin_light'] %}
                 <form action="{{ url_for('deactivate_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-sm btn-outline-secondary" data-confirm="Soll {{ player.name }} wirklich archiviert werden?">Archivieren</button>
                 </form>
                 {% endif %}
                 {% else %}
-                {% if current_user.role == 'admin' %}
+                {% if current_user.role in ['admin', 'admin_light'] %}
                 <form action="{{ url_for('reactivate_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-sm btn-outline-success">Reaktivieren</button>
                 </form>
+                {% endif %}
+                {% if current_user.role == 'admin' %}
                 <form action="{{ url_for('delete_player', player_id=player.id) }}" method="POST" class="ajax-form d-inline-block">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-sm btn-outline-danger" data-confirm="Soll {{ player.name }} wirklich ENDGÜLTIG gelöscht werden? Alle Daten gehen verloren!">Löschen</button>

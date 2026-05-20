@@ -229,6 +229,22 @@
                 </div>
             </div>
         </div>
+
+        <!-- Trikotgeld -->
+        <div class="col-md-6 col-xl">
+            <div class="stat-card danger p-4">
+                 <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Trikotgeld-Topf</h6>
+                        <h2 class="mb-0 fw-bold text-danger">{{ "%.2f"|format(trikotgeld_sum) }} €</h2>
+                        <small class="text-muted">{{ trikotgeld_games_count }} Spiel{% if trikotgeld_games_count != 1 %}e{% endif %} gesammelt</small>
+                    </div>
+                    <div class="stat-icon bg-gradient-danger">
+                         <i class="bi bi-basket3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Charts & Lists -->

@@ -326,7 +326,7 @@ def recalculate_settlements(player_id, team, _db_session=None):
         fines = session.query(Transaction).filter(
             Transaction.player_id == player_id,
             Transaction.team == team,
-            Transaction.category == 'fine',
+            Transaction.category.in_(['fine', 'custom']),
             Transaction.amount < 0
         ).order_by(Transaction.date.asc(), Transaction.id.asc()).all()
 
@@ -435,16 +435,31 @@ def send_push_notification(player_id, title, body, url):
                 db.session.rollback()
 
 def notify_admins(title, body):
-    """Sendet eine Push-Benachrichtigung an alle Admins mit Push-Abo."""
+    """Sendet eine Push-Benachrichtigung an alle Admins und Manager mit Push-Abo."""
     try:
-        # User Model muss hier verfügbar sein (wird zur Laufzeit aufgelöst)
-        admins = User.query.filter_by(role='admin').all()
+        # Check settings
+        notify_setting = KasseSetting.query.filter_by(key='admin_notify_roles').first()
+        if notify_setting is not None and notify_setting.value != '':
+            manager_roles = [r.strip() for r in notify_setting.value.split(',')]
+        elif notify_setting is not None and notify_setting.value == '':
+            manager_roles = [] # Niemand wird benachrichtigt
+        else:
+            manager_roles = ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2']
+            
+        if not manager_roles:
+            push_logger.info(f"Admin-Notification übersprungen: Keine Rollen konfiguriert für {title}")
+            return
+
+        admins = User.query.filter(User.role.in_(manager_roles)).all()
         admin_url = url_for('admin', _external=True)
         count = 0
         for admin in admins:
             if admin.player_id:
-                send_push_notification(admin.player_id, title, body, admin_url)
-                count += 1
+                # Prüfen, ob der Admin wirklich ein Push-Snippet hinterlegt hat
+                existing_sub = PushSubscription.query.filter_by(player_id=admin.player_id).first()
+                if existing_sub:
+                    send_push_notification(admin.player_id, title, body, admin_url)
+                    count += 1
         push_logger.info(f"Admin-Notification gesendet an {count} Admins: {title}")
     except Exception as e:
         push_logger.error(f"Fehler bei notify_admins: {e}")
@@ -582,7 +597,7 @@ def generate_static_files_hash():
     return new_hash
 
 # --- Benutzerrollen & Rechte-Management ---
-VALID_ROLES = ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer', 'guest', 'player']
+VALID_ROLES = ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer', 'guest', 'player']
 
 def role_required(allowed_roles):
     def decorator(f):
@@ -594,6 +609,8 @@ def role_required(allowed_roles):
             user_roles = {current_user.role}
             if getattr(current_user, 'secondary_role', None):
                 user_roles.add(current_user.secondary_role)
+            if getattr(current_user, 'tertiary_role', None):
+                user_roles.add(current_user.tertiary_role)
             if getattr(current_user, 'real_role', None):
                 user_roles.add(current_user.real_role)
                 
@@ -789,19 +806,18 @@ def get_latest_fupa_game_data(season_str):
             team1_match = None
             today_dt = get_local_now().date()
 
-            # STRATEGIE 1: Matching mit Team 2 (falls vorhanden)
-            if team2_kickoff:
-                 for item, dt in parsed_t1:
-                     if abs((dt - team2_kickoff).days) <= 3:
-                         team1_match = item
-                         fupa_logger.info(f"Team 1 Match via Sync gefunden: {dt}")
-                         break
-            
-            # STRATEGIE 2: Fallback -> Nimm das chronologisch letzte gespielte Spiel
+            # Wir holen unabhänigig für Team 1 das zuletzt gespielte Spiel
+            # STRATEGIE 1 (Syncing) entfernt, da dies bei Spielfrei fehlerhaft alte Spiele lädt
+
+            # STRATEGIE 2: Fallback -> Nimm das chronologisch letzte gespielte Spiel (Tatsächlich Hauptstrategie)
             if not team1_match and parsed_t1:
                  # Wir suchen in unseren sortierten Matches (Desc) das erste, das <= heute ist.
                  # parsed_t1: [(item, dt), (item, dt)...] desc sorted by dt
                  for item, dt in parsed_t1:
+                     if dt <= today_dt:
+                         team1_match = item
+                         fupa_logger.info(f"Team 1 Match gefunden (Last Played): {dt} (<= {today_dt})")
+                         break
                      if dt <= today_dt:
                          team1_match = item
                          fupa_logger.info(f"Team 1 Fallback (Last Played): {dt} (<= {today_dt})")
@@ -967,6 +983,8 @@ class User(UserMixin, db.Model):
     player = db.relationship('Player', backref='user', uselist=False)
     # NEW: Secondary Role for Quick-Toggle
     secondary_role = db.Column(db.String(80), nullable=True)
+    # NEW: Tertiary Role for "Admin Light" or 3rd job
+    tertiary_role = db.Column(db.String(80), nullable=True)
 
     def set_password(self, password): self.password_hash = generate_password_hash(password)
     def check_password(self, password): return check_password_hash(self.password_hash, password)
@@ -1030,6 +1048,8 @@ def load_user(user_id):
                 is_valid_override = True
             elif getattr(user, 'secondary_role', None) == override:
                 is_valid_override = True
+            elif getattr(user, 'tertiary_role', None) == override:
+                is_valid_override = True
 
             if is_valid_override:
                 # IMPORTANT: Expunge the user from the SQLAlchemy session BEFORE
@@ -1074,7 +1094,7 @@ class Player(db.Model):
         # Filter all fines for this player
         fines = self.transactions.filter(
             Transaction.amount < 0,
-            Transaction.category == 'fine'
+            Transaction.category.in_(['fine', 'custom'])
         ).order_by(Transaction.date.asc()).all()
         
         for f in fines:
@@ -1097,7 +1117,7 @@ class Player(db.Model):
         """Gibt eine Liste aller unbezahlten Strafen zurück."""
         query = self.transactions.filter(
             Transaction.amount < 0,
-            Transaction.category == 'fine'
+            Transaction.category.in_(['fine', 'custom'])
         )
         if team_filter:
             query = query.filter(Transaction.team == team_filter)
@@ -1130,7 +1150,7 @@ class Player(db.Model):
         return db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.player_id == self.id,
             Transaction.team == team,
-            Transaction.category == 'fine'
+            Transaction.category.in_(['fine', 'custom'])
         ).scalar() or 0.0
 
     def get_general_balance(self, team):
@@ -1292,6 +1312,11 @@ def ensure_schema():
                      conn.execute(text("ALTER TABLE admin_user ADD COLUMN secondary_role TEXT"))
                      conn.commit()
                  print("MIGRATION: Added secondary_role column to admin_user table.")
+             if 'tertiary_role' not in columns:
+                 with db.engine.connect() as conn:
+                     conn.execute(text("ALTER TABLE admin_user ADD COLUMN tertiary_role TEXT"))
+                     conn.commit()
+                 print("MIGRATION: Added tertiary_role column to admin_user table.")
         except Exception as e:
              print(f"Schema Check Error (Migration): {e}")
 
@@ -1340,7 +1365,7 @@ def inject_seasons():
 
 @app.context_processor
 def utility_processor():
-    return dict(quote_plus=quote_plus, now=get_local_now(), get_deadline=get_deadline)
+    return dict(quote_plus=quote_plus, now=get_local_now().replace(tzinfo=None), get_deadline=get_deadline)
 
 # --- Öffentliche Routen ---
 @app.route('/')
@@ -1440,7 +1465,7 @@ def index():
         ).filter(
             Transaction.player_id.in_(player_ids),
             Transaction.team == 'team1',
-            Transaction.category == 'fine'
+            Transaction.category.in_(['fine', 'custom'])
         ).group_by(Transaction.player_id).all()
         fine_team1_map = {r[0]: r[1] or 0.0 for r in t1_fine_results}
     
@@ -1463,7 +1488,7 @@ def index():
         ).filter(
             Transaction.player_id.in_(player_ids),
             Transaction.team == 'team2',
-            Transaction.category == 'fine'
+            Transaction.category.in_(['fine', 'custom'])
         ).group_by(Transaction.player_id).all()
         fine_team2_map = {r[0]: r[1] or 0.0 for r in t2_fine_results}
     
@@ -1585,12 +1610,19 @@ def kasse(team_name=None):
         Transaction.team == team_name
     ).scalar() or 0.0
 
+    # Total Payouts (Team filtered)
+    total_payouts = db.session.query(func.sum(Transaction.amount)).filter(
+        Transaction.amount < 0,
+        Transaction.description.like('Auszahlung%'),
+        Transaction.team == team_name
+    ).scalar() or 0.0
+
     # Total Expenses (Team filtered)
     total_team_expenses_all = db.session.query(func.sum(TeamExpense.amount)).filter(
         TeamExpense.team == team_name
     ).scalar() or 0.0
 
-    current_balance = start_balance + total_deposits - total_team_expenses_all
+    current_balance = start_balance + total_deposits + total_payouts - total_team_expenses_all
 
     # Seasonal Deposits (Team filtered)
     season_deposits = db.session.query(func.sum(Transaction.amount)).filter(
@@ -1634,13 +1666,20 @@ def kasse(team_name=None):
             Transaction.date <= prev_season_end
         ).scalar() or 0.0
 
+        prev_payouts = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.amount < 0,
+            Transaction.description.like('Auszahlung%'),
+            Transaction.team == team_name,
+            Transaction.date <= prev_season_end
+        ).scalar() or 0.0
+
         # Expenses up to prev_season_end
         prev_expenses = db.session.query(func.sum(TeamExpense.amount)).filter(
             TeamExpense.team == team_name,
             TeamExpense.date <= prev_season_end
         ).scalar() or 0.0
         
-        prev_balance = start_balance + prev_deposits - prev_expenses
+        prev_balance = start_balance + prev_deposits + prev_payouts - prev_expenses
         balance_diff = current_balance - prev_balance
         
     except Exception as e:
@@ -1676,6 +1715,30 @@ def kasse(team_name=None):
         total_debts = 0.0
         total_player_credit = 0.0
 
+    # Trikotgeld Calculation
+    last_trikotgeld_expense = TeamExpense.query.filter(
+        TeamExpense.team == team_name,
+        TeamExpense.description.ilike('%Trikotgeld%')
+    ).order_by(TeamExpense.date.desc()).first()
+
+    trikot_query = db.session.query(Transaction.date, Transaction.description).filter(
+        Transaction.team == team_name,
+        Transaction.description.ilike('%gg.%')
+    )
+    if last_trikotgeld_expense:
+        trikot_query = trikot_query.filter(Transaction.date > last_trikotgeld_expense.date)
+
+    trikotgeld_games_count = trikot_query.distinct().count()
+
+    fee_setting_key = 'trikotgeld_fee_team1' if team_name == 'team1' else 'trikotgeld_fee_team2'
+    fee_setting = KasseSetting.query.filter_by(key=fee_setting_key).first()
+    try:
+        trikot_fee = float(fee_setting.value) if fee_setting and fee_setting.value else 25.0
+    except ValueError:
+        trikot_fee = 25.0
+
+    trikotgeld_sum = -(trikotgeld_games_count * trikot_fee)
+
     return render_template('kasse.html', 
                         balance=current_balance, 
                         prev_balance=prev_balance,
@@ -1686,7 +1749,9 @@ def kasse(team_name=None):
                         total_player_credit=total_player_credit, 
                         expenses=season_expenses,
                         total_expenses=season_expenses_sum,
-                        current_team=team_name)
+                        current_team=team_name,
+                        trikotgeld_sum=trikotgeld_sum,
+                        trikotgeld_games_count=trikotgeld_games_count)
 
 @app.route('/player/<int:player_id>')
 @login_required
@@ -1777,9 +1842,11 @@ def player_detail(player_id):
             })
 
         for tx in tx_collection:
-            if tx.description == 'Startguthaben': continue
+            if tx.description == 'Startguthaben' or (tx.description and tx.description.startswith('Auto-Tilgung Guthaben -> Strafe')):
+                continue
 
             entry = {
+                'id': tx.id,
                 'date': tx.date,
                 'desc': tx.description,
                 'amount_raw': tx.amount,
@@ -1792,7 +1859,7 @@ def player_detail(player_id):
             if tx.amount == 0 and tx.description and 'gg.' in tx.description.lower():
                 entry['did_not_play'] = True
 
-            if tx.category == 'fine' and tx.amount < 0:
+            if tx.category in ('fine', 'custom') and tx.amount < 0:
                  settled = tx.amount_settled if tx.amount_settled is not None else 0.0
                  if settled < abs(tx.amount) - 0.01:
                      if tx.doubled_by_id is None:
@@ -1802,7 +1869,7 @@ def player_detail(player_id):
 
             processed.append(entry)
 
-        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)))
+        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False), x.get('id', 0)))
 
         current_balance = 0.0
         for entry in processed:
@@ -1823,13 +1890,14 @@ def player_detail(player_id):
                 })
             for k in seasonal_kistl_tx:
                 processed.append({
+                    'id': k.id,
                     'date': k.date,
                     'desc': k.description,
                     'val': f"{k.amount} Kistl",
                     'type': 'kistl'
                 })
 
-        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False)), reverse=True)
+        processed.sort(key=lambda x: (x['date'], not x.get('is_carry_over', False), x.get('id', 0)), reverse=True)
         return processed
 
     all_transactions = build_tx_list(seasonal_money_tx, total_carryover, include_kistl=True)
@@ -2037,8 +2105,9 @@ def switch_role(target_role):
 
     is_admin = current_user.real_role == 'admin'
     is_switching_to_secondary = (target_role == getattr(current_user, 'secondary_role', None))
+    is_switching_to_tertiary = (target_role == getattr(current_user, 'tertiary_role', None))
 
-    if not is_admin and target_role != 'reset' and not is_switching_to_secondary:
+    if not is_admin and target_role != 'reset' and not is_switching_to_secondary and not is_switching_to_tertiary:
         flash("Keine Berechtigung zum Wechseln in diese Rolle.", "danger")
         return redirect(url_for('index'))
 
@@ -2056,6 +2125,10 @@ def switch_role(target_role):
             flash("Ungültige Rolle.", "danger")
     
     log_audit("SECURITY", "ROLE_SWITCH", f"Rolle/Arbeitsbereich gewechselt zu: {target_role}")
+    
+    next_url = request.args.get('next')
+    if next_url:
+        return redirect(next_url)
     return redirect(request.referrer or url_for('index'))
 
 # ---- WEBAUTHN / BIOMETRISCHE LOGIN FEATURES ----
@@ -2319,7 +2392,7 @@ def magic_login(token):
 
 @app.route('/generate_guest_link', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def generate_guest_link():
     """Generiert einen Link für Gastzugriff (View-Only), gültig für 7 Tage."""
     
@@ -2434,7 +2507,7 @@ def change_password():
 # --- NEUE FUNKTION: Saisonabschluss-Bericht ---
 @app.route('/admin/report/season')
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def generate_season_report():
     try:
         # 1. Daten sammeln
@@ -2455,11 +2528,27 @@ def generate_season_report():
         # Einkommen vor Saison
         total_deposits_before_t1 = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date < g.start_date,
+            Transaction.amount > 0,
+            Transaction.team == 'team1'
+        ).scalar() or 0.0
+
+        total_payouts_before_t1 = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.date < g.start_date,
+            Transaction.amount < 0,
+            Transaction.description.like('Auszahlung%'),
             Transaction.team == 'team1'
         ).scalar() or 0.0
         
         total_deposits_before_t2 = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date < g.start_date,
+            Transaction.amount > 0,
+            (Transaction.team == 'team2') | (Transaction.team == None)
+        ).scalar() or 0.0
+
+        total_payouts_before_t2 = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.date < g.start_date,
+            Transaction.amount < 0,
+            Transaction.description.like('Auszahlung%'),
             (Transaction.team == 'team2') | (Transaction.team == None)
         ).scalar() or 0.0
         
@@ -2474,8 +2563,8 @@ def generate_season_report():
             (TeamExpense.team == 'team2') | (TeamExpense.team == None)
         ).scalar() or 0.0
         
-        kasse_balance_at_season_start_t1 = initial_val_t1 + total_deposits_before_t1 - total_expenses_before_t1
-        kasse_balance_at_season_start_t2 = initial_val_t2 + total_deposits_before_t2 - total_expenses_before_t2
+        kasse_balance_at_season_start_t1 = initial_val_t1 + total_deposits_before_t1 + total_payouts_before_t1 - total_expenses_before_t1
+        kasse_balance_at_season_start_t2 = initial_val_t2 + total_deposits_before_t2 + total_payouts_before_t2 - total_expenses_before_t2
         
         # Gesamt Start
         kasse_balance_at_season_start = kasse_balance_at_season_start_t1 + kasse_balance_at_season_start_t2
@@ -2494,9 +2583,23 @@ def generate_season_report():
             Transaction.description != "Startguthaben",
             Transaction.team == 'team1'
         ).scalar() or 0.0
-        
+
+        payouts_team1 = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.date.between(g.start_date, g.end_date),
+            Transaction.amount < 0,
+            Transaction.description.like('Auszahlung%'),
+            Transaction.team == 'team1'
+        ).scalar() or 0.0
+
         # Breakdown Team 2 (Rest)
         income_team2 = income_this_season - income_team1
+
+        payouts_team2 = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.date.between(g.start_date, g.end_date),
+            Transaction.amount < 0,
+            Transaction.description.like('Auszahlung%'),
+            ((Transaction.team == 'team2') | (Transaction.team == None))
+        ).scalar() or 0.0
         
         expenses_this_season_list = TeamExpense.query.filter(
             TeamExpense.date.between(g.start_date, g.end_date)
@@ -2507,8 +2610,8 @@ def generate_season_report():
         expenses_team2 = expenses_total_this_season - expenses_team1
 
         # Berechne den Kassenstand AM ENDE der Saison PRO TEAM
-        kasse_balance_at_season_end_t1 = kasse_balance_at_season_start_t1 + income_team1 - expenses_team1
-        kasse_balance_at_season_end_t2 = kasse_balance_at_season_start_t2 + income_team2 - expenses_team2
+        kasse_balance_at_season_end_t1 = kasse_balance_at_season_start_t1 + income_team1 + payouts_team1 - expenses_team1
+        kasse_balance_at_season_end_t2 = kasse_balance_at_season_start_t2 + income_team2 + payouts_team2 - expenses_team2
         
         kasse_balance_at_season_end = kasse_balance_at_season_end_t1 + kasse_balance_at_season_end_t2
 
@@ -2589,7 +2692,7 @@ def generate_season_report():
 
 @app.route('/schulden/settle-kistl/<int:player_id>', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
 def settle_kistl_cockpit(player_id):
     player = Player.query.get_or_404(player_id)
     try:
@@ -2787,9 +2890,9 @@ def _generate_debt_image_bytes(filter_mode):
         if base_team_mode == 'team1':
             tm = 'team1'
             if sub_mode == 'fine':
-                relevant = [p for p in all_active_players if p.fine_balance_team1 != 0]
-                debtors = [p for p in relevant if p.fine_balance_team1 < 0]
-                debtors.sort(key=lambda p: p.fine_balance_team1)
+                relevant = [p for p in all_active_players if p.fine_balance_team1 != 0 or p.kistl_balance != 0]
+                debtors = [p for p in relevant if p.fine_balance_team1 < 0 or p.kistl_balance < 0]
+                debtors.sort(key=lambda p: (p.fine_balance_team1, p.kistl_balance))
                 title = 'Schuldenübersicht Strafen (1. Mannschaft)'
             elif sub_mode == 'general':
                 relevant = [p for p in all_active_players if p.general_balance_team1 != 0]
@@ -2805,9 +2908,9 @@ def _generate_debt_image_bytes(filter_mode):
         elif base_team_mode == 'team2':
             tm = 'team2'
             if sub_mode == 'fine':
-                relevant = [p for p in all_active_players if p.fine_balance_team2 != 0]
-                debtors = [p for p in relevant if p.fine_balance_team2 < 0]
-                debtors.sort(key=lambda p: p.fine_balance_team2)
+                relevant = [p for p in all_active_players if p.fine_balance_team2 != 0 or p.kistl_balance != 0]
+                debtors = [p for p in relevant if p.fine_balance_team2 < 0 or p.kistl_balance < 0]
+                debtors.sort(key=lambda p: (p.fine_balance_team2, p.kistl_balance))
                 title = 'Schuldenübersicht Strafen (2. Mannschaft)'
             elif sub_mode == 'general':
                 relevant = [p for p in all_active_players if p.general_balance_team2 != 0]
@@ -2847,13 +2950,27 @@ def _generate_debt_image_bytes(filter_mode):
         for p in sequence:
             if base_team_mode in ['team1', 'team2'] and sub_mode in ['all', 'fine']:
                 tm = base_team_mode
-                p_fines = [t for t in p.transactions if t.category == 'fine' and t.team == tm and t.amount < 0]
-                unpaid = [f for f in sorted(p_fines, key=lambda x: x.date, reverse=False) if (getattr(f, 'amount_settled', 0.0) or 0.0) < abs(f.amount) - 0.01]
+                p_fines = [t for t in p.transactions if t.category in ('fine', 'custom') and (t.team == tm or t.team is None or t.team == 'all') and t.amount < 0]
+                unpaid_money = [f for f in p_fines if (getattr(f, 'amount_settled', 0.0) or 0.0) < abs(f.amount) - 0.01]
+                
+                kistl = p.kistl_balance
+                unpaid_kistl = []
+                if kistl < 0:
+                    kistls_negative = sorted([k for k in p.kistl_transactions if k.amount < 0], key=lambda x: getattr(x, 'date', None) or date.min, reverse=True)
+                    # Nimm so viele Kistl-Strafen wie noch offen sind (anhand der Balance)
+                    unpaid_kistl = kistls_negative[:abs(kistl)]
+                
+                # Kombiniere beide und sortiere nach Datum (neueste zuerst)
+                all_unpaid = sorted(unpaid_money + unpaid_kistl, key=lambda x: getattr(x, 'date', None) or date.min, reverse=True)
+                
+                # Nimm die letzten 3 Einträge
+                unpaid = all_unpaid[:3]
+
                 player_unpaid_fines.append(unpaid)
                 gen_bal = getattr(p, f'general_balance_{tm}')
                 fine_bal = getattr(p, f'fine_balance_{tm}')
                 # Bei Strafen-Sicht oder Gesamt-Sicht Detailhöhe
-                if (fine_bal < 0) and unpaid:
+                if (fine_bal < 0 or kistl < 0) and unpaid:
                     h = max(base_row_height, (len(unpaid) * 22 * S) + 20 * S)
                     player_heights.append(h)
                 else:
@@ -3158,7 +3275,7 @@ def _generate_debt_image_bytes(filter_mode):
                 
                     try:
                         unpaid_fines = player_unpaid_fines[i]
-                        condition = (g + f_val < -0.01) if sub_mode == 'all' else True
+                        condition = (g + f_val < -0.01 or k < 0) if sub_mode == 'all' else True
                         if unpaid_fines and condition:
                             block_height = len(unpaid_fines) * 22 * S
                             current_fines_y = y_pos + (current_row_height - block_height) // 2 + 3 * S # +3 for optical adjustment
@@ -3569,7 +3686,7 @@ def refresh_fupa_data():
 
 @app.route('/admin/audit-log')
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def audit_log():
     log_audit("ACCESS", "AUDIT_LOG", "Audit-Log eingesehen.")
     show_all = request.args.get('show_all') == '1'
@@ -3588,7 +3705,7 @@ def audit_log():
 @app.route('/admin')
 @app.route('/admin/')
 @login_required
-@role_required(['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer']) # Explicit list: No 'guest', or 'player'
+@role_required(['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2', 'viewer']) # Explicit list: No 'guest', or 'player'
 def admin():
     # Daten für die verschiedenen Tabs laden
     push_subscriptions = PushSubscription.query.order_by(PushSubscription.player_id).all()
@@ -3842,7 +3959,7 @@ def admin():
 
     today = get_local_now().date()
     next_birthday_info = None
-    if current_user.role == 'admin':
+    if current_user.role in ['admin', 'admin_light']:
         players_with_bday = Player.query.filter(Player.birthday.isnot(None), Player.is_active==True).all()
         if players_with_bday:
             upcoming_birthdays = []
@@ -3880,20 +3997,23 @@ def admin():
     
     
     if show_all_logs:
+        tx_list_raw = Transaction.query.filter(Transaction.date.between(g.start_date, g.end_date)).all()
+        tx_list = [t for t in tx_list_raw if not (t.description and t.description.startswith('Auto-Tilgung Guthaben -> Strafe'))]
         log_items = sorted(
-            Transaction.query.filter(Transaction.date.between(g.start_date, g.end_date)).all() +
+            tx_list +
             KistlTransaction.query.filter(KistlTransaction.date.between(g.start_date, g.end_date)).all() +
             TeamExpense.query.filter(TeamExpense.date.between(g.start_date, g.end_date)).all(),
-            key=lambda x: x.date, 
+            key=lambda x: x.date,
             reverse=True
         )
     else:
         # --- PERFORMANCE OPTIMIERUNG: Log Items limitieren ---
         # Wir laden nicht mehr ALLE Transaktionen der Saison, sondern nur die neuesten (z.B. 150 pro Typ),
         # kombinieren diese und nehmen dann die global neuesten 150.
-        limit_per_type = 150
-        
-        tx_list = Transaction.query.filter(Transaction.date.between(g.start_date, g.end_date)).order_by(Transaction.date.desc()).limit(limit_per_type).all()
+        limit_per_type = 250
+
+        tx_list_raw = Transaction.query.filter(Transaction.date.between(g.start_date, g.end_date)).order_by(Transaction.date.desc()).limit(limit_per_type).all()
+        tx_list = [t for t in tx_list_raw if not (t.description and t.description.startswith('Auto-Tilgung Guthaben -> Strafe'))]
         kistl_list = KistlTransaction.query.filter(KistlTransaction.date.between(g.start_date, g.end_date)).order_by(KistlTransaction.date.desc()).limit(limit_per_type).all()
         expense_list = TeamExpense.query.filter(TeamExpense.date.between(g.start_date, g.end_date)).order_by(TeamExpense.date.desc()).limit(limit_per_type).all()
         
@@ -3944,6 +4064,19 @@ def admin():
         if PushSubscription.query.filter_by(player_id=current_user.player_id).count() > 0:
             current_user_push_active = True
 
+    # CLEANUP PENDING REQUESTS IF ALREADY BOOKED
+    if game_already_booked_t1 and pending_t1:
+        db.session.delete(pending_t1)
+        pending_info['t1'] = None
+        db.session.commit()
+        flash('Offener Antrag für Team 1 in Kasse gelöscht, da das Spiel bereits verbucht war.', 'success')
+        
+    if game_already_booked_t2 and pending_t2:
+        db.session.delete(pending_t2)
+        pending_info['t2'] = None
+        db.session.commit()
+        flash('Offener Antrag für Team 2 in Kasse gelöscht, da das Spiel bereits verbucht war.', 'success')
+
     # --- MANAGER DASHBOARD RENDER LOGIC ---
     if current_user.role in ['strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2']:
         is_strafen_manager = current_user.role.startswith('strafen_')
@@ -3967,7 +4100,7 @@ def admin():
             current_user_push_active=current_user_push_active,
             selected_season=g.current_season_str,
             today=today,
-            now=get_local_now(),
+            now=get_local_now().replace(tzinfo=None),
             pending_info=pending_info,
             game_already_booked_t1=game_already_booked_t1,
             game_already_booked_t2=game_already_booked_t2,
@@ -3994,7 +4127,7 @@ def admin():
         start_balance_team1=start_balance_team1_setting.value if start_balance_team1_setting else "",
         start_balance_team2=start_balance_team2_setting.value if start_balance_team2_setting else "",
         today=today,
-        now=get_local_now(),
+        now=get_local_now().replace(tzinfo=None),
         players_for_game_fee=players_for_game_fee,
         latest_game_date=latest_game_date,
         latest_game_opponent=latest_game_opponent,
@@ -4366,7 +4499,7 @@ def add_transaction():
 
 @app.route('/admin/add-mass-transaction', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def add_mass_transaction():
     try:
         description = request.form.get('description')
@@ -4381,9 +4514,9 @@ def add_mass_transaction():
             return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
         # Permission Check
-        if target_team == 'team1' and current_user.role != 'admin':
+        if target_team == 'team1' and current_user.role not in ['admin', 'admin_light']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
-        if target_team == 'team2' and current_user.role != 'admin':
+        if target_team == 'team2' and current_user.role not in ['admin', 'admin_light']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
 
         try:
@@ -4513,11 +4646,12 @@ def add_payment():
         amount_withdrawn_from_guthaben = 0.0
 
         # Find unpaid fines for this player and team, ordered by date (Oldest first - FIFO)
-        unpaid_fines = Transaction.query.filter_by(
-            player_id=player_id, 
-            team=target_team, 
-            category='fine'
-        ).filter(Transaction.amount < 0).order_by(Transaction.date.asc()).all()
+        unpaid_fines = Transaction.query.filter(
+            Transaction.player_id == player_id,
+            Transaction.team == target_team,
+            Transaction.category.in_(['fine', 'custom']),
+            Transaction.amount < 0
+        ).order_by(Transaction.date.asc()).all()
         
         valid_unpaid_fines = []
         for f in unpaid_fines:
@@ -4641,7 +4775,7 @@ def add_payment():
 
 @app.route('/admin/add-payout', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def add_payout():
     try:
         player_id = int(request.form['player_id'])
@@ -4692,7 +4826,7 @@ def add_payout():
 
 @app.route('/admin/add-team-expense', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def add_team_expense():
     success = False
     try:
@@ -4760,7 +4894,7 @@ def add_player():
 
 @app.route('/admin/edit-player/<int:player_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def edit_player(player_id):
     # Standardwerte für die Antwort definieren
     success = False
@@ -4932,7 +5066,7 @@ def delete_player(player_id):
 
 @app.route('/admin/player/deactivate/<int:player_id>', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def deactivate_player(player_id):
     player = Player.query.get_or_404(player_id)
     player.is_active = False
@@ -4941,12 +5075,14 @@ def deactivate_player(player_id):
     trigger_image_regeneration()  # Update Cache
     message = f'Spieler "{player.name}" wurde archiviert.'
     
+    html_delete = f'<form action="{url_for("delete_player", player_id=player.id)}" method="POST" class="d-inline-block ajax-form"><button type="submit" class="btn btn-sm btn-outline-danger" data-confirm="Soll {player.name} wirklich ENDGÜLTIG gelöscht werden? Alle Daten gehen verloren!">Löschen</button></form>' if current_user.role == 'admin' else ''
+    
     html_for_inactive_list = f'''
     <li class="list-group-item d-flex justify-content-between align-items-center" id="backlog-player-item-{player.id}">
         <a href="{url_for('player_detail', player_id=player.id)}">{player.name}</a>
         <div>
             <form action="{url_for('reactivate_player', player_id=player.id)}" method="POST" class="d-inline-block me-2 ajax-form"><button type="submit" class="btn btn-sm btn-outline-success">Reaktivieren</button></form>
-            <form action="{url_for('delete_player', player_id=player.id)}" method="POST" class="d-inline-block ajax-form"><button type="submit" class="btn btn-sm btn-outline-danger" data-confirm="Soll {player.name} wirklich ENDGÜLTIG gelöscht werden? Alle Daten gehen verloren!">Löschen</button></form>
+            {html_delete}
         </div>
     </li>
     '''
@@ -4962,7 +5098,7 @@ def deactivate_player(player_id):
 
 @app.route('/admin/player/reactivate/<int:player_id>', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def reactivate_player(player_id):
     player = Player.query.get_or_404(player_id)
     player.is_active = True
@@ -4983,10 +5119,11 @@ def reactivate_player(player_id):
 
 @app.route('/admin/add-fine', methods=['POST'])
 @login_required
-@role_required(['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
 def add_fine():
     description = request.form.get('description', '').strip()
-    amount_str = request.form.get('amount'); fine_type = request.form.get('type')
+    amount_str = request.form.get('amount')
+    fine_type = request.form.get('type')
     team = request.form.get('team', 'team2')
     category = request.form.get('category', 'general')
 
@@ -4994,9 +5131,9 @@ def add_fine():
         return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
     # Permission Check
-    if team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
+    if team == 'team1' and current_user.role not in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1']:
             return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
-    if team == 'team2' and current_user.role not in ['admin', 'strafen_manager_2', 'trikot_manager_2']:
+    if team == 'team2' and current_user.role not in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2']:
             return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
 
     success = False
@@ -5035,7 +5172,7 @@ def add_fine():
 
 @app.route('/admin/edit-fine/<int:fine_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
 def edit_fine(fine_id):
     try:
         fine = Fine.query.get_or_404(fine_id)
@@ -5045,9 +5182,9 @@ def edit_fine(fine_id):
         category = request.form.get('category', 'general')
         
         # Permission Check
-        if fine.team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
+        if fine.team == 'team1' and current_user.role not in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
-        if (fine.team == 'team2' or fine.team is None) and current_user.role not in ['admin', 'strafen_manager_2', 'trikot_manager_2']:
+        if (fine.team == 'team2' or fine.team is None) and current_user.role not in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
 
         if not all([description, amount_str, fine_type]):
@@ -5078,15 +5215,15 @@ def edit_fine(fine_id):
 
 @app.route('/admin/delete-fine/<int:fine_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'])
 def delete_fine(fine_id):
     try:
         fine = Fine.query.get_or_404(fine_id)
         
         # Permission Check
-        if fine.team == 'team1' and current_user.role not in ['admin', 'strafen_manager_1', 'trikot_manager_1']:
+        if fine.team == 'team1' and current_user.role not in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
-        if (fine.team == 'team2' or fine.team is None) and current_user.role not in ['admin', 'strafen_manager_2', 'trikot_manager_2']:
+        if (fine.team == 'team2' or fine.team is None) and current_user.role not in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2']:
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
 
         description = fine.description
@@ -5110,7 +5247,7 @@ def delete_fine(fine_id):
 # --- Log Deletion (mit Seiten-Reload) ---
 @app.route('/admin/delete/transaction/<int:tx_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_transaction(tx_id):
     try:
         tx = Transaction.query.get_or_404(tx_id)
@@ -5118,11 +5255,12 @@ def delete_transaction(tx_id):
         # Permission Check
         user_roles = {current_user.role}
         if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): user_roles.add(current_user.tertiary_role)
         if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
 
         allowed = False
-        # 1. Admin darf alles
-        if 'admin' in user_roles:
+        # 1. Admin & Admin_Light darf alles
+        if 'admin' in user_roles or 'admin_light' in user_roles:
             allowed = True
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
@@ -5144,7 +5282,7 @@ def delete_transaction(tx_id):
         log_audit("DELETE", "TRANSACTION", f"Transaktion '{tx.description}' ({tx.amount}€) von {tx.player.name} gelöscht.")
         
         # --- NEW: Recalculate Settlements ---
-        if tx.category == 'fine' or tx.amount > 0:
+        if tx.category in ('fine', 'custom') or tx.amount > 0:
              # Only relevant if we deleted a Fine or a Payment
              recalculate_settlements(tx.player_id, tx.team)
         
@@ -5166,7 +5304,7 @@ def delete_transaction(tx_id):
 
 @app.route('/admin/delete/transaction-bulk/<int:tx_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_transaction_bulk(tx_id):
     try:
         tx = Transaction.query.get_or_404(tx_id)
@@ -5174,11 +5312,12 @@ def delete_transaction_bulk(tx_id):
         # 1. PERMISSION CHECK (Copy of delete_transaction logic)
         user_roles = {current_user.role}
         if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): user_roles.add(current_user.tertiary_role)
         if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
 
         allowed = False
-        # 1. Admin darf alles
-        if 'admin' in user_roles:
+        # 1. Admin & Admin_Light darf alles
+        if 'admin' in user_roles or 'admin_light' in user_roles:
             allowed = True
             
         # 2. Ersteller darf eigene Transaktion innerhalb von 30 Tagen löschen (Hauptregel für Manager)
@@ -5238,7 +5377,7 @@ def delete_transaction_bulk(tx_id):
 
 @app.route('/admin/delete/kistl-transaction/<int:tx_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
 def delete_kistl_transaction(tx_id):
     try:
         tx = KistlTransaction.query.get_or_404(tx_id)
@@ -5246,10 +5385,11 @@ def delete_kistl_transaction(tx_id):
         # Permission Check
         user_roles = {current_user.role}
         if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): user_roles.add(current_user.tertiary_role)
         if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
 
         allowed = False
-        if 'admin' in user_roles: 
+        if 'admin' in user_roles or 'admin_light' in user_roles: 
             allowed = True
         elif tx.created_by == current_user.username:
             if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
@@ -5282,7 +5422,7 @@ def delete_kistl_transaction(tx_id):
 
 @app.route('/admin/delete/team-expense/<int:tx_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def delete_team_expense(tx_id):
     try:
         tx = TeamExpense.query.get_or_404(tx_id)
@@ -5290,10 +5430,11 @@ def delete_team_expense(tx_id):
         # Permission Check
         user_roles = {current_user.role}
         if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): user_roles.add(current_user.tertiary_role)
         if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
 
         allowed = False
-        if 'admin' in user_roles: 
+        if 'admin' in user_roles or 'admin_light' in user_roles: 
             allowed = True
         elif tx.team == 'team1' and 'trikot_manager_1' in user_roles: 
             if tx.created_at and (GERMAN_TZ.localize(tx.created_at) if tx.created_at.tzinfo is None else tx.created_at) > get_local_now() - timedelta(hours=24):
@@ -5335,119 +5476,45 @@ def delete_team_expense(tx_id):
 
 @app.route('/admin/approve-game-fee/<int:request_id>', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def approve_game_fee(request_id):
     req = PendingGameFee.query.get_or_404(request_id)
     
-    # Check permissions for approval
-    # Team 1 req -> Admin or Trikot1
-    # Check permissions for approval
-    # Vier-Augen-Prinzip: EIGENE Requests dürfen NIE selbst genehmigt werden (außer Admin evtl, aber selbst da macht es Sinn es zu trennen, 
-    # aber Admin ist Admin. User Anforderung: "Bestätigung des ANDEREN").
-    # Also: Wenn ich Creator bin, darf ich NICHT approven.
-    
+    # 4-Augen-Prinzip: EIGENE Requests dürfen NIE selbst genehmigt werden
     is_creator = (req.created_by == current_user.username)
-    if is_creator and current_user.role != 'admin': # Admin darf alles (Notfall)
+    if is_creator and current_user.role not in ['admin', 'admin_light']:
          flash('Eigene Anträge können nicht selbst freigegeben werden.', 'danger')
-         return redirect(url_for('admin'))
-
-    if req.team == 'team1' and current_user.role not in ['admin', 'trikot_manager_1', 'trikot_manager_2']: # TM2 darf T1 genehmigen (Cross-Check)
-         # Wait, user said "Bestätigung des ANDEREN Trikotgeldmanagers".
-         # So TM2 approves TM1.
-         # Current Logic allowed T1/Admin. Now allowing TM2 too?
-         pass
-         
-    # RE-EVALUATING PERMISSION LOGIC FOR CROSS-APPROVAL
-    # Can allow:
-    # 1. Admin (always)
-    # 2. Opposite Manager (to REVIEW/RETURN)
-    # 3. Team Manager (to BOOK, if not creator)
-    
-    can_approve = False
-    action_type = "BOOK" # or "RETURN"
-    
-    if current_user.role == 'admin': 
-        can_approve = True
-        action_type = "BOOK"
-
-    # Team 1 Logic
-    if req.team == 'team1':
-        # TM2 can approve (Review Step) -> Triggers RETURN
-        if current_user.role == 'trikot_manager_2': 
-            can_approve = True
-            action_type = "RETURN"
-            
-        # TM1 can approve (Final Step) -> Triggers BOOK
-        # Only if he is NOT the current creator (meaning TM2 sent it back)
-        if current_user.role == 'trikot_manager_1' and not is_creator:
-            can_approve = True
-            action_type = "BOOK"
-
-    # Team 2 Logic
-    if req.team == 'team2':
-        # TM1 can approve (Review Step) -> Triggers RETURN
-        if current_user.role == 'trikot_manager_1': 
-            can_approve = True
-            action_type = "RETURN"
-            
-        # TM2 can approve (Final Step) -> Triggers BOOK
-        # Only if he is NOT the current creator (meaning TM1 sent it back)
-        if current_user.role == 'trikot_manager_2' and not is_creator:
-            can_approve = True
-            action_type = "BOOK"
-
-    if not can_approve:
-         flash('Keine Berechtigung zur Freigabe (Vier-Augen-Prinzip) oder falscher Workflow-Schritt.', 'danger')
          return redirect(url_for('admin'))
 
     try:
         # Check Form Data Override (User edited the list)
         new_player_ids = []
         if 'player_ids' in request.form:
-             new_player_ids = request.form.getlist('player_ids') # Returns strings
-             new_player_ids = [int(pid) for pid in new_player_ids]
+             new_player_ids = [int(pid) for pid in request.form.getlist('player_ids')]
              new_player_ids.sort()
         else:
              try:
-                 # Fallback if somehow empty or different form (should not happen with modal)
                  raw = json.loads(req.player_ids_json)
-                 if isinstance(raw, dict):
-                     new_player_ids = raw.get('current', [])
-                 else:
-                     new_player_ids = raw
+                 if isinstance(raw, dict): new_player_ids = sorted(raw.get('current', []))
+                 else: new_player_ids = sorted(raw)
              except: new_player_ids = []
              
         try:
              raw = json.loads(req.player_ids_json)
-             if isinstance(raw, dict):
-                 old_player_ids = [int(pid) for pid in raw.get('current', [])]
-             else:
-                 old_player_ids = [int(pid) for pid in raw]
+             if isinstance(raw, dict): old_player_ids = sorted([int(pid) for pid in raw.get('current', [])])
+             else: old_player_ids = sorted([int(pid) for pid in raw])
         except: old_player_ids = []
-        old_player_ids.sort()
         
         has_changes = (new_player_ids != old_player_ids)
         
-        # Override action type based on changes
-        if action_type == "RETURN" and not has_changes:
-            # If reviewer made NO changes, we can approve directly (User requirement)
-            action_type = "BOOK"
-            
-        if action_type == "BOOK" and has_changes and current_user.role != 'admin':
-            # If owner/finalizer made changes, it must go back to the other manager for review
-            action_type = "RETURN"
-        
         # --- RETURN LOGIC (Ping Pong) ---
-        if action_type == "RETURN":
-            # Update the request instead of booking
-            req.player_ids_json = json.dumps(new_player_ids)
+        if has_changes:
+            # Wurde editiert -> wird als neu angesehen und geht zurück zur Prüfung an den anderen Manager
+            req.player_ids_json = json.dumps({"current": new_player_ids, "current_free": []}) # Update the JSON structure
             req.created_by = current_user.username # Flip ownership
             
             db.session.commit()
-            
-            flash(f'Antrag aktualisiert und zur erneuten Prüfung zurückgegeben (Änderungen erkannt).', 'info')
-            
-            # Optional: Notify original sender via Push
+            flash(f'Antrag aktualisiert und zur Prüfung an den anderen Trikotmanager zurückgegeben (Änderungen erkannt).', 'info')
             return redirect(url_for('admin'))
             
         # --- BOOK LOGIC (Finalize) ---     
@@ -5531,9 +5598,9 @@ def reject_game_fee(request_id):
     is_creator = (req.created_by == current_user.username)
     has_permission = False
     
-    if req.team == 'team1' and current_user.role in ['admin', 'trikot_manager_1']:
+    if req.team == 'team1' and current_user.role in ['admin', 'admin_light', 'trikot_manager_1']:
         has_permission = True
-    if req.team == 'team2' and current_user.role in ['admin', 'trikot_manager_2']:
+    if req.team == 'team2' and current_user.role in ['admin', 'admin_light', 'trikot_manager_2']:
         has_permission = True
         
     if not (has_permission or is_creator):
@@ -5554,7 +5621,7 @@ def reject_game_fee(request_id):
 
 @app.route('/admin/add-game-fee', methods=['POST'])
 @login_required
-@role_required(['admin', 'trikot_manager_1', 'trikot_manager_2'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def add_game_fee():
     season = request.args.get('season')
     try:
@@ -5620,8 +5687,9 @@ def add_game_fee():
                 old_opp = pending.opponent
                 
                 has_changes = (old_ids != current_ids_set) or (old_free_ids != current_free_ids_set) or (old_date != date_val) or (old_opp != opp_val)
-                # Rollenbasiert: nur der andere Manager (reviewer_role) oder Admin kann bestätigen/buchen
-                can_book = current_user.role in ['admin', reviewer_role]
+                # 4-Augen-Prinzip: Wer es NICHT erstellt hat, darf es buchen (oder Admin)
+                is_creator = (pending.created_by == current_user.username)
+                can_book = (not is_creator) or (current_user.role in ['admin', 'admin_light'])
                 
                 if has_changes:
                     # Save with History (Old IDs become 'previous')
@@ -5733,9 +5801,9 @@ def add_game_fee():
                         push_logger.error(f"Push Error (Create): {e}")
 
         # Wenn das andere Team Spielfrei hat, kann das eigene Team direkt buchen (kein Antrag nötig)
-        can_book_t1_direct = (current_user.role == 'admin') or spielfrei_team2
-        can_book_t2_direct = (current_user.role == 'admin') or spielfrei_team1
-
+        can_book_t1_direct = (current_user.role in ['admin', 'admin_light']) or spielfrei_team2
+        can_book_t2_direct = (current_user.role in ['admin', 'admin_light']) or spielfrei_team1
+        
         process_team('team1', team1_player_ids, team1_free_ids, date_team1, opp_team1, can_book_t1_direct, 'trikot_manager_2', spielfrei_team1)
         process_team('team2', team2_player_ids, team2_free_ids, date_team2, opp_team2, can_book_t2_direct, 'trikot_manager_1', spielfrei_team2)
         
@@ -5747,7 +5815,7 @@ def add_game_fee():
 
 @app.route('/api/check-game-date', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
 def check_game_date():
     date_str = request.form.get('date')
     if not date_str:
@@ -5915,13 +5983,23 @@ def edit_user(user_id):
     
     # Handle secondary role
     secondary_role = request.form.get('secondary_role')
-    if secondary_role:
-        if secondary_role == 'none':
+    if secondary_role is not None:
+        if secondary_role in ('', 'none'):
             user.secondary_role = None
         elif secondary_role in VALID_ROLES:
             user.secondary_role = secondary_role
         else:
-            flash("Ungültige Sekundärrolle ausgewählt.", "warning")
+            flash("Ungültige 2. Rolle ausgewählt.", "warning")
+
+    # Handle tertiary role
+    tertiary_role = request.form.get('tertiary_role')
+    if tertiary_role is not None:
+        if tertiary_role in ('', 'none'):
+            user.tertiary_role = None
+        elif tertiary_role in VALID_ROLES:
+            user.tertiary_role = tertiary_role
+        else:
+            flash("Ungültige 3. Rolle ausgewählt.", "warning")
 
     user.role = new_role
     if new_password:
@@ -5950,11 +6028,18 @@ def delete_user(user_id):
 
 @app.route('/admin/app/save-settings', methods=['POST'])
 @login_required
-@role_required(['admin'])
+@role_required(['admin', 'admin_light'])
 def save_settings():
     # Helper to handle checkboxes (if present='1', else '0')
     doubling_t1 = '1' if request.form.get('doubling_active_team1') else '0'
     doubling_t2 = '1' if request.form.get('doubling_active_team2') else '0'
+
+    notify_roles = request.form.getlist('admin_notify_roles')
+    # If the form doesn't contain 'admin_notify_roles', there is a catch: 
+    # HTML forms don't send anything for unchecked check-boxes. 
+    # But since we have other fields, if the form is submitted, we can assume empty means none.
+    # However, maybe it's safer to just join them:
+    notify_roles_str = ','.join(notify_roles) 
 
     settings_to_save = {
         'paypal_link_team1_general': request.form.get('paypal_link_team1_general'),
@@ -5966,12 +6051,15 @@ def save_settings():
         'paypal_email_team2_general': request.form.get('paypal_email_team2_general'),
         'paypal_email_team2_fine': request.form.get('paypal_email_team2_fine'),
         'game_fee': request.form.get('game_fee'),
+        'trikotgeld_fee_team1': request.form.get('trikotgeld_fee_team1'),
+        'trikotgeld_fee_team2': request.form.get('trikotgeld_fee_team2'),
         'session_lifetime_days': request.form.get('session_lifetime_days'),
         'doubling_active_team1': doubling_t1,
-        'doubling_active_team2': doubling_t2
+        'doubling_active_team2': doubling_t2,
+        'admin_notify_roles': notify_roles_str
     }
     for key, value in settings_to_save.items():
-        if value is None: continue # Skip if not in form
+        if value is None and key != 'admin_notify_roles': continue # Skip if not in form, but we DO want to save empty string for roles
         setting = KasseSetting.query.filter_by(key=key).first()
         if setting:
             setting.value = value
@@ -6413,6 +6501,13 @@ if __name__ == '__main__':
             admin.set_password('admin123')
             db.session.add(admin)
             db.session.commit()
+            
+        # User constraint fix
+        bastian = User.query.filter_by(username='Bastian Berleb').first()
+        if bastian and bastian.role != 'trikot_manager_2' and bastian.role != 'admin':
+            bastian.role = 'trikot_manager_2'
+            db.session.commit()
+            print("Fixed Bastian Berleb to role trikot_manager_2")
             
     # Port 5000 ist Standard, host='0.0.0.0' macht es im Netzwerk verfügbar
     app.run(host='0.0.0.0', port=5000, debug=True)

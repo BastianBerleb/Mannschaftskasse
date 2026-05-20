@@ -241,26 +241,27 @@
                   {% if current_user.role == 'admin' %}
                       {% set show_delete = True %}
                   {% else %}
+                      {% set max_diff = 2592000 if tx.__class__.__name__ == 'Transaction' else 86400 %}
                       {# Check for Managers #}
                       {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
                           {% if tx.team == 'team1' and current_user.role in ['trikot_manager_1', 'strafen_manager_1'] %}
                               {% if tx.created_at %}
-                                  {% set diff = (now - tx.created_at).total_seconds() %}
-                                  {% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                                  {% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}
+                                  {% if diff < max_diff %}{% set show_delete = True %}{% endif %}
                               {% endif %}
                           {% endif %}
                           {% if tx.team == 'team2' and current_user.role in ['trikot_manager_2', 'strafen_manager_2'] %}
                               {% if tx.created_at %}
-                                  {% set diff = (now - tx.created_at).total_seconds() %}
-                                  {% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                                  {% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}
+                                  {% if diff < max_diff %}{% set show_delete = True %}{% endif %}
                               {% endif %}
                           {% endif %}
                       {% endif %}
                       
-                      {# Check for Self-Deletion (24h) #}
+                      {# Check for Self-Deletion (24h or 30 days) #}
                       {% if not show_delete and tx.created_by == current_user.username and tx.created_at %}
-                          {% set diff = (now - tx.created_at).total_seconds() %}
-                          {% if diff < 86400 %}
+                          {% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}
+                          {% if diff < max_diff %}
                               {% set show_delete = True %}
                           {% endif %}
                       {% endif %}

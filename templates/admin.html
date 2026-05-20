@@ -133,9 +133,13 @@
 <!-- MAIN NAVIGATION (4 PILLARS) -->
 <div class="overflow-x-auto mb-4">
     <div class="nav nav-tabs" id="mainTab" role="tablist">
+        {% if current_user.role != 'admin_light' %}
         <button class="nav-link active" id="tab-dashboard" data-bs-toggle="tab" data-bs-target="#pane-dashboard" type="button" role="tab">Dashboard</button>
+        {% endif %}
+        {% if current_user.role == 'admin' %}
         <button class="nav-link" id="tab-finance" data-bs-toggle="tab" data-bs-target="#pane-finance" type="button" role="tab">Finanzen</button>
-        <button class="nav-link" id="tab-data" data-bs-toggle="tab" data-bs-target="#pane-data" type="button" role="tab">Verwaltung</button>
+        {% endif %}
+        <button class="nav-link {% if current_user.role == 'admin_light' %}active{% endif %}" id="tab-data" data-bs-toggle="tab" data-bs-target="#pane-data" type="button" role="tab">Verwaltung</button>
         <button class="nav-link" id="tab-system" data-bs-toggle="tab" data-bs-target="#pane-system" type="button" role="tab">System</button>
     </div>
 </div>
@@ -143,12 +147,13 @@
 <div class="tab-content admin-card" id="mainTabContent">
     
     <!-- === 1. DASHBOARD === -->
+    {% if current_user.role != 'admin_light' %}
     <div class="tab-pane fade show active" id="pane-dashboard" role="tabpanel">
         <h5 class="fw-bold mb-3">Übersicht</h5>
         
         <!-- Quick Actions -->
         <div class="row g-3 mb-4">
-            {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+            {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
             <div class="col-md-3 col-6">
                 <!-- Target Payment Tab -->
                 <button class="btn btn-primary w-100 py-3 h-100 shadow-sm" onclick="switchSubTab('#tab-finance', '#pills-payment-tab')">
@@ -165,7 +170,7 @@
                 </button>
             </div>
              
-             {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
              <div class="col-md-3 col-6">
                  <button class="btn btn-warning w-100 py-3 h-100 shadow-sm" onclick="switchSubTab('#tab-finance', '#pills-game-fee-tab')">
                     <div class="fs-4 mb-1">👕</div>
@@ -212,13 +217,13 @@
             </div>
         </div>
     </div>
-
+    {% endif %}
 
     <!-- === 2. FINANZEN === -->
     <div class="tab-pane fade" id="pane-finance" role="tabpanel">
         
         <!-- Sub-Navigation Finance -->
-        {% set show_payment = current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+        {% set show_payment = current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
         {% set active_tab = 'payment' if show_payment else 'fine' %}
 
         <ul class="nav nav-pills mb-4" id="financeTab" role="tablist">
@@ -228,7 +233,7 @@
              </li>
              {% endif %}
              
-             {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
              <li class="nav-item">
                 <button class="nav-link {{ 'active' if active_tab == 'fine' }}" id="pills-fine-tab" data-bs-toggle="pill" data-bs-target="#pills-fine" type="button" role="tab">Strafe (Katalog)</button>
              </li>
@@ -237,26 +242,26 @@
              </li>
              {% endif %}
 
-             {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
              <li class="nav-item">
                 <button class="nav-link" id="pills-game-fee-tab" data-bs-toggle="pill" data-bs-target="#pills-game-fee" type="button" role="tab">Trikotgeld</button>
              </li>
              {% endif %}
 
-             {% if current_user.role in ['admin', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] %}
              <li class="nav-item">
                 <button class="nav-link" id="pills-kistl-tab" data-bs-toggle="pill" data-bs-target="#pills-kistl" type="button" role="tab">Kistl</button>
              </li>
              {% endif %}
 
              <!-- NEW MASS-BOOKING TAB -->
-             {% if current_user.role == 'admin' %}
+             {% if current_user.role in ['admin', 'admin_light'] %}
              <li class="nav-item">
                 <button class="nav-link" id="pills-mass-tab" data-bs-toggle="pill" data-bs-target="#pills-mass" type="button" role="tab">Massenbuchung</button>
              </li>
              {% endif %}
 
-             {% if current_user.role in ['admin', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
              <li class="nav-item">
                 <button class="nav-link" id="pills-expense-tab" data-bs-toggle="pill" data-bs-target="#pills-expense" type="button" role="tab">Ausgabe</button>
              </li>
@@ -283,8 +288,8 @@
                           <div class="col-md-6">
                             <label class="form-label small text-muted">Mannschaft</label>
                             <select name="team" class="form-select" id="payment_team_select" required>
-                                {% if current_user.role in ['admin', 'trikot_manager_2', 'strafen_manager_2'] %}<option value="team2" selected>Zweite Mannschaft</option>{% endif %}
-                                {% if current_user.role in ['admin', 'trikot_manager_1', 'strafen_manager_1'] %}<option value="team1" {% if current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_2', 'strafen_manager_2'] %}<option value="team2" selected>Zweite Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'strafen_manager_1'] %}<option value="team1" {% if current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}
                             </select>
                           </div>
                           <div class="col-12">
@@ -332,8 +337,8 @@
                           <div class="col-md-6">
                             <label class="form-label small text-muted">Mannschaft</label>
                             <select name="team" class="form-select" id="fine_team_select" required>
-                                {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2" selected>Zweite Mannschaft</option>{% endif %}
-                                {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2" selected>Zweite Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}
                             </select>
                           </div>
                           <div class="col-12">
@@ -372,8 +377,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                        <div class="row g-3">
                           <div class="col-md-6"><label class="small text-muted">Datum</label><input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required></div>
-                          <div class="col-md-6"><label class="small text-muted">Für</label><select name="team" class="form-select" required>{% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
-                            {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}</select></div>
+                          <div class="col-md-6"><label class="small text-muted">Für</label><select name="team" class="form-select" required>{% if current_user.role in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
+                            {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1" {% if current_user.role == 'strafen_manager_1' or current_user.role == 'trikot_manager_1' %}selected{% endif %}>Erste Mannschaft</option>{% endif %}</select></div>
                           <div class="col-12"><label class="small text-muted">Spieler</label><select name="player_id" class="form-select" id="custom_fine_player_select" required><option value="" disabled selected>-- Wählen --</option>{% for player in active_players %}<option value="{{ player.id }}">{{ player.name }}</option>{% endfor %}</select></div>
                           <div class="col-12"><label class="small text-muted">Grund</label><input type="text" name="description" class="form-control" placeholder="Grund" required></div>
                           <div class="col-8"><label class="small text-muted">Betrag/Menge</label><input type="number" step="any" name="amount" class="form-control" required></div>
@@ -572,8 +577,8 @@
                                  <div class="col-md-6">
                                     <label class="form-label small text-muted">Mannschaft</label>
                                     <select name="team" class="form-select" id="mass_team_select" required>
-                                        {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
-                                        {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}
+                                        {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
+                                        {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}
                                     </select>
                                  </div>
                                  <div class="col-md-8">
@@ -622,7 +627,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                      <h5>Teamausgabe</h5>
                      <input type="date" name="date" class="form-control mb-2" value="{{ today.strftime('%Y-%m-%d') }}" required>
-                     <select name="team" class="form-select mb-2">{% if current_user.role in ['admin', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}{% if current_user.role in ['admin', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}</select>
+                     <select name="team" class="form-select mb-2">{% if current_user.role in ['admin', 'admin_light', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}{% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}</select>
                      <input type="text" name="description" class="form-control mb-2" placeholder="Beschreibung" required>
                      <input type="number" name="amount" step="0.01" class="form-control mb-2" placeholder="Betrag €" required>
                      <button class="btn btn-warning w-100">Ausgabe buchen</button>
@@ -653,7 +658,7 @@
                  </h6>
              </div>
              
-             <div class="list-group list-group-flush border rounded-3 overflow-hidden shadow-sm" style="max-height: 250px; overflow-y: auto;">
+             <div class="list-group list-group-flush border rounded-3 shadow-sm" style="max-height: 250px; overflow-y: auto; overflow-x: hidden;">
                  {% for item in user_history_today %}
                  <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-2">
                      <div class="me-3">
@@ -688,7 +693,7 @@
     </div>
 
     <!-- === 3. VERWALTUNG === -->
-    <div class="tab-pane fade" id="pane-data" role="tabpanel">
+    <div class="tab-pane fade {% if current_user.role == 'admin_light' %}show active{% endif %}" id="pane-data" role="tabpanel">
          <ul class="nav nav-pills mb-3" role="tablist">
             <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-pl-active">Aktive Spieler</button></li>
             <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-pl-inactive">Archiv</button></li>
@@ -732,8 +737,8 @@
                     <div class="row g-2">
                         <div class="col-md-3">
                             <select name="team" class="form-select" required>
-                                {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
-                                {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}
+                                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}
                             </select>
                         </div>
                         <div class="col-md-3"><select name="category" class="form-select"><option value="general">Allgemein</option><option value="game">Spiel</option><option value="training">Training</option></select></div>
@@ -749,7 +754,7 @@
                     </div>
                 </form>
                 <!-- GROUPED FINES DISPLAY -->
-                {% if current_user.role in ['admin', 'strafen_manager_2', 'trikot_manager_2'] %}
+                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_2', 'trikot_manager_2'] %}
                 <h5 class="text-secondary mt-4 border-bottom pb-2">Zweite Mannschaft</h5>
                 
                 <h6 class="text-muted small text-uppercase fw-bold mt-3 mb-2">Spieltag</h6>
@@ -766,7 +771,7 @@
                 </ul>
                 {% endif %}
 
-                {% if current_user.role in ['admin', 'strafen_manager_1', 'trikot_manager_1'] %}
+                {% if current_user.role in ['admin', 'admin_light', 'strafen_manager_1', 'trikot_manager_1'] %}
                 <h5 class="text-primary mt-5 border-bottom pb-2">Erste Mannschaft</h5>
                 
                 <h6 class="text-muted small text-uppercase fw-bold mt-3 mb-2">Spieltag</h6>
@@ -790,7 +795,7 @@
     <div class="tab-pane fade" id="pane-system" role="tabpanel">
         <ul class="nav nav-pills mb-3" role="tablist">
             <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-log">Protokoll</button></li>
-            {% if current_user.role == 'admin' %}
+            {% if current_user.role in ['admin', 'admin_light'] %}
             <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-settings">Einstellungen</button></li>
             {% endif %}
              {% if current_user.role == 'admin' %}
@@ -834,21 +839,29 @@
                             </td>
                             <td>
                               <!-- LEGACY DELETE CHECK LOGIC -->
-                              {% set u_roles = [current_user.role, current_user.secondary_role|default(''), current_user.real_role|default('')] %}
+                              {% set u_roles = [current_user.role, current_user.secondary_role|default(''), current_user.tertiary_role|default(''), current_user.real_role|default('')] %}
                               {% set show_delete = False %}
                               {% if 'admin' in u_roles %}
                                   {% set show_delete = True %}
                               {% else %}
-                                  {% if tx.__class__.__name__ in ['Transaction', 'TeamExpense'] %}
-                                      {% if tx.team == 'team1' and ('trikot_manager_1' in u_roles or 'strafen_manager_1' in u_roles) %}
-                                          {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                                  {% set max_diff = 2592000 if tx.__class__.__name__ == 'Transaction' else 86400 %}
+                                  
+                                  {% if tx.__class__.__name__ == 'Transaction' and 'Verzugszuschlag' in tx.description %}
+                                      {% if tx.team == 'team1' and ('strafen_manager_1' in u_roles or 'trikot_manager_1' in u_roles) %}{% set show_delete = True %}{% endif %}
+                                      {% if tx.team == 'team2' and ('strafen_manager_2' in u_roles or 'trikot_manager_2' in u_roles) %}{% set show_delete = True %}{% endif %}
+                                  {% endif %}
+                                  
+                                  {% if not show_delete and tx.__class__.__name__ == 'TeamExpense' %}
+                                      {% if tx.team == 'team1' and 'trikot_manager_1' in u_roles %}
+                                          {% if tx.created_at %}{% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}{% endif %}
                                       {% endif %}
-                                      {% if tx.team == 'team2' and ('trikot_manager_2' in u_roles or 'strafen_manager_2' in u_roles) %}
-                                          {% if tx.created_at %}{% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}{% endif %}
+                                      {% if tx.team == 'team2' and 'trikot_manager_2' in u_roles %}
+                                          {% if tx.created_at %}{% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}{% endif %}
                                       {% endif %}
                                   {% endif %}
+                                  
                                   {% if not show_delete and tx.created_by == current_user.username and tx.created_at %}
-                                      {% set diff = (now - tx.created_at).total_seconds() %}{% if diff < 86400 %}{% set show_delete = True %}{% endif %}
+                                      {% set diff = (now - tx.created_at.replace(tzinfo=None)).total_seconds() %}{% if diff < max_diff %}{% set show_delete = True %}{% endif %}
                                   {% endif %}
                               {% endif %}
 
@@ -939,6 +952,45 @@
                             <input type="number" step="0.01" name="game_fee" id="game_fee" class="form-control form-control-sm" value="{{ settings.get('game_fee', '3.00') }}">
                         </div>
                      </div>
+                     <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="small text-muted">Trikotgeld-Topf Multiplikator Erste (€)</label>
+                            <input type="number" step="0.01" name="trikotgeld_fee_team1" id="trikotgeld_fee_team1" class="form-control form-control-sm" value="{{ settings.get('trikotgeld_fee_team1', '25.00') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small text-muted">Trikotgeld-Topf Multiplikator Zweite (€)</label>
+                            <input type="number" step="0.01" name="trikotgeld_fee_team2" id="trikotgeld_fee_team2" class="form-control form-control-sm" value="{{ settings.get('trikotgeld_fee_team2', '25.00') }}">
+                        </div>
+                     </div>
+                     
+                     <h6>System-Benachrichtigungen</h6>
+                     <p class="text-muted small mb-2">Wer soll Push-Benachrichtigungen bei Systemereignissen (z.B. Neue Registrierungen) erhalten?</p>
+                     <div class="row g-2 mb-3">
+                         {% set notify_roles_raw = settings.get('admin_notify_roles', 'admin,strafen_manager_1,strafen_manager_2,trikot_manager_1,trikot_manager_2') %}
+                         {% set notify_roles = notify_roles_raw.split(',') if notify_roles_raw else [] %}
+                         <div class="col-md-12">
+                             <div class="form-check form-check-inline">
+                                 <input class="form-check-input" type="checkbox" name="admin_notify_roles" value="admin" id="nr_admin" {% if 'admin' in notify_roles %}checked{% endif %}>
+                                 <label class="form-check-label small" for="nr_admin">Admin</label>
+                             </div>
+                             <div class="form-check form-check-inline">
+                                 <input class="form-check-input" type="checkbox" name="admin_notify_roles" value="strafen_manager_1" id="nr_sm1" {% if 'strafen_manager_1' in notify_roles %}checked{% endif %}>
+                                 <label class="form-check-label small" for="nr_sm1">Strafen-Mgr 1</label>
+                             </div>
+                             <div class="form-check form-check-inline">
+                                 <input class="form-check-input" type="checkbox" name="admin_notify_roles" value="strafen_manager_2" id="nr_sm2" {% if 'strafen_manager_2' in notify_roles %}checked{% endif %}>
+                                 <label class="form-check-label small" for="nr_sm2">Strafen-Mgr 2</label>
+                             </div>
+                             <div class="form-check form-check-inline">
+                                 <input class="form-check-input" type="checkbox" name="admin_notify_roles" value="trikot_manager_1" id="nr_tm1" {% if 'trikot_manager_1' in notify_roles %}checked{% endif %}>
+                                 <label class="form-check-label small" for="nr_tm1">Trikot-Mgr 1</label>
+                             </div>
+                             <div class="form-check form-check-inline">
+                                 <input class="form-check-input" type="checkbox" name="admin_notify_roles" value="trikot_manager_2" id="nr_tm2" {% if 'trikot_manager_2' in notify_roles %}checked{% endif %}>
+                                 <label class="form-check-label small" for="nr_tm2">Trikot-Mgr 2</label>
+                             </div>
+                         </div>
+                     </div>
                      
                      <h6>Strafen-Verdopplung</h6>
                      <p class="text-muted small mb-2">Automatische Verdopplung von Strafen nach Ablauf der Frist (z.B. nach 4 Wochen).</p>
@@ -965,6 +1017,7 @@
                  
                  <hr class="my-5">
                  
+                 {% if current_user.role == 'admin' %}
                  <!-- PUSH SUBSCRIPTIONS RESTORED -->
                   <h5>Push-Abos (Geräte)</h5>
                   <p class="text-muted small">Registrierte Geräte für Benachrichtigungen.</p>
@@ -1018,6 +1071,7 @@
                          </tbody>
                      </table>
                   </div>
+                  {% endif %}
 
                  <h5>Einmalige Einrichtung / Korrektur der Startwerte</h5>
                   <p class="text-muted small">Setze hier die Startwerte aus deiner alten Excel-Liste. Positive Werte sind Guthaben.</p>
@@ -1107,17 +1161,22 @@
                     <li class="list-group-item">
                         <form action="{{ url_for('edit_user', user_id=user.id) }}" method="POST" class="row g-1 align-items-center">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                             <div class="col-3 fw-bold">{{ user.username }}</div>
+                             <div class="col-2 fw-bold text-truncate" title="{{ user.username }}">{{ user.username }}</div>
                              <div class="col-2">
-                               <select name="role" class="form-select form-select-sm" title="Aufgabenbereich 1">{% for r in valid_roles %}<option value="{{ r }}" {% if user.role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+                               <select name="role" class="form-select form-select-sm" title="Rolle 1">{% for r in valid_roles %}<option value="{{ r }}" {% if user.role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
                              </div>
                              <div class="col-2">
-                               <select name="secondary_role" class="form-select form-select-sm" title="Aufgabenbereich 2">
+                               <select name="secondary_role" class="form-select form-select-sm" title="Rolle 2">
                                    <option value="" {% if not user.secondary_role %}selected{% endif %}>- Keine -</option>
                                    {% for r in valid_roles %}<option value="{{ r }}" {% if user.secondary_role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
                              </div>
-                             <div class="col-3">
-                                 <input type="text" name="password" class="form-control form-control-sm" placeholder="Neu (opt)">
+                             <div class="col-2">
+                               <select name="tertiary_role" class="form-select form-select-sm" title="Rolle 3">
+                                   <option value="" {% if not user.tertiary_role %}selected{% endif %}>- Keine -</option>
+                                   {% for r in valid_roles %}<option value="{{ r }}" {% if user.tertiary_role==r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select>
+                             </div>
+                             <div class="col-2">
+                                 <input type="text" name="password" class="form-control form-control-sm" placeholder="Passwort">
                              </div>
                              <div class="col-2 text-end">
                                <button class="btn btn-sm btn-primary py-0">Save</button>
