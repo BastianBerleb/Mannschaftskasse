@@ -261,7 +261,7 @@
              </li>
              {% endif %}
 
-             {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
+             {% if has_any_role(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2']) %}
              <li class="nav-item">
                 <button class="nav-link" id="pills-expense-tab" data-bs-toggle="pill" data-bs-target="#pills-expense" type="button" role="tab">Ausgabe</button>
              </li>
@@ -623,13 +623,26 @@
             
             <!-- AUSGABEN / PAYOUT (Short version) -->
              <div class="tab-pane fade" id="pills-expense" role="tabpanel">
-                 <form action="{{ url_for('add_team_expense') }}" method="POST" class="ajax-form border p-3 bg-white rounded">
+                 <form action="{{ url_for('add_team_expense') }}" method="POST" enctype="multipart/form-data" class="ajax-form border p-3 bg-white rounded">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                      <h5>Teamausgabe</h5>
                      <input type="date" name="date" class="form-control mb-2" value="{{ today.strftime('%Y-%m-%d') }}" required>
-                     <select name="team" class="form-select mb-2">{% if current_user.role in ['admin', 'admin_light', 'trikot_manager_2'] %}<option value="team2">Zweite Mannschaft</option>{% endif %}{% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1'] %}<option value="team1">Erste Mannschaft</option>{% endif %}</select>
+                     <select name="team" class="form-select mb-2">{% if has_any_role(['admin', 'admin_light', 'trikot_manager_2']) %}<option value="team2">Zweite Mannschaft</option>{% endif %}{% if has_any_role(['admin', 'admin_light', 'trikot_manager_1']) %}<option value="team1">Erste Mannschaft</option>{% endif %}</select>
                      <input type="text" name="description" class="form-control mb-2" placeholder="Beschreibung" required>
                      <input type="number" name="amount" step="0.01" class="form-control mb-2" placeholder="Betrag €" required>
+                     
+                     <label class="form-label small text-muted mb-0 mt-1">Beleg (optional):</label>
+                     <div class="d-flex gap-2 mb-2">
+                         <div class="flex-grow-1">
+                             <input type="file" name="receipt" id="receiptFile" accept="image/*,.pdf" class="form-control form-control-sm" onchange="if(this.files.length > 0) { document.getElementById('receiptCam').value = ''; document.getElementById('camStatus').classList.add('d-none'); }">
+                         </div>
+                         <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button" onclick="document.getElementById('receiptCam').click();" title="Kamera öffnen">
+                             <i class="bi bi-camera me-1"></i> Foto
+                         </button>
+                     </div>
+                     <input type="file" name="receipt_camera" id="receiptCam" accept="image/*" capture="environment" class="d-none" onchange="if(this.files.length > 0) { document.getElementById('receiptFile').value = ''; document.getElementById('camStatus').classList.remove('d-none'); }">
+                     <div id="camStatus" class="small text-success mb-2 d-none fw-bold"><i class="bi bi-check-circle"></i> Foto für Upload bereit</div>
+                     
                      <button class="btn btn-warning w-100">Ausgabe buchen</button>
                  </form>
              </div>
@@ -666,6 +679,11 @@
                          <div class="text-muted" style="font-size: 0.75rem;">
                              <span class="me-2">{{ item.time.strftime('%H:%M') if item.time else '' }}</span> 
                              <span>{{ item.description }}</span>
+                             {% if item.receipt_file_path %}
+                             <a href="{{ url_for('static', filename=item.receipt_file_path.split('static/')[1]) }}" target="_blank" class="ms-1 text-decoration-none" title="Beleg ansehen">
+                                 <i class="bi bi-file-earmark-text"></i> Beleg
+                             </a>
+                             {% endif %}
                          </div>
                      </div>
                      <div class="d-flex align-items-center gap-2">

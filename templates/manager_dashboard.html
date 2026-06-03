@@ -356,7 +356,7 @@
 <!-- 4. TEAMAUSGABEN -->
 <div class="manager-card border-top border-4 border-info">
     <h5 class="section-title"><i class="bi bi-cart"></i> Teamausgaben buchen</h5>
-    <form action="{{ url_for('add_team_expense') }}" method="POST" class="ajax-form">
+    <form action="{{ url_for('add_team_expense') }}" method="POST" enctype="multipart/form-data" class="ajax-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="team" value="{{ target_team_value }}">
         
@@ -372,6 +372,19 @@
             <div class="col-12">
                 <label class="form-label fw-bold text-main">Kosten (€)</label>
                 <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted mb-0 mt-1">Beleg (optional):</label>
+                <div class="d-flex gap-2">
+                    <div class="flex-grow-1">
+                        <input type="file" name="receipt" id="receiptFileManager" accept="image/*,.pdf" class="form-control form-control-sm" onchange="if(this.files.length > 0) { document.getElementById('receiptCamManager').value = ''; document.getElementById('camStatusManager').classList.add('d-none'); }">
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button" onclick="document.getElementById('receiptCamManager').click();" title="Kamera öffnen">
+                        <i class="bi bi-camera me-1"></i> Foto
+                    </button>
+                </div>
+                <input type="file" name="receipt_camera" id="receiptCamManager" accept="image/*" capture="environment" class="d-none" onchange="if(this.files.length > 0) { document.getElementById('receiptFileManager').value = ''; document.getElementById('camStatusManager').classList.remove('d-none'); }">
+                <div id="camStatusManager" class="small text-success mt-1 d-none fw-bold"><i class="bi bi-check-circle"></i> Foto für Upload bereit</div>
             </div>
             <div class="col-12 mt-4">
                 <button type="submit" class="btn btn-info text-white w-100 py-2 fw-bold shadow-sm">Ausgabe buchen</button>
@@ -407,8 +420,13 @@
              <div class="me-3">
                  <div class="fw-bold text-main">{{ item.player_name }}</div>
                  <div class="text-muted small mt-1">
-                     <span class="me-2"><i class="bi bi-clock"></i> {{ item.time.strftime('%H:%M') if item.time else '' }}</span> 
+                     <span class="me-2"><i class="bi bi-clock"></i> {{ item.time.strftime('%H:%M') if item.time else '' }}</span>
                      <span>{{ item.description }}</span>
+                     {% if item.receipt_file_path %}
+                     <a href="{{ url_for('static', filename=item.receipt_file_path.split('static/')[1]) }}" target="_blank" class="ms-1 text-decoration-none badge bg-light text-secondary border">
+                         <i class="bi bi-file-earmark-text"></i> Beleg
+                     </a>
+                     {% endif %}
                  </div>
              </div>
              <div class="d-flex flex-column align-items-end gap-2">

@@ -31,7 +31,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link href="{{ url_for('static', filename='css/premium.css') }}?v=5" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/premium.css') }}?v=8" rel="stylesheet">
     <!-- Chart.js wird nur auf Seiten geladen die es brauchen (via block extra_scripts) -->
     <style>
         .navbar-brand img {
@@ -709,5 +709,122 @@
     // Initial Check
     document.addEventListener('DOMContentLoaded', updateOnlineStatusUI);
 </script>
+
+{% if current_user.is_authenticated %}
+<nav class="mobile-nav d-lg-none">
+  <!-- Tab 1: Übersicht (Home) -->
+  <a href="{{ url_for('index') }}" class="mobile-nav-item {% if request.endpoint == 'index' %}active{% endif %}">
+    <i class="bi bi-house-door-fill"></i>
+    <span>Übersicht</span>
+  </a>
+
+  {% set has_secondary = current_user.secondary_role and current_user.secondary_role != 'none' and current_user.secondary_role != 'None' and current_user.secondary_role != '' %}
+  {% set has_tertiary = current_user.tertiary_role and current_user.tertiary_role != 'none' and current_user.tertiary_role != 'None' and current_user.tertiary_role != '' %}
+
+  {% if has_secondary %}
+    <!-- Tab 2: Strafen (immer an Position 2 bei Multi-Role für kompakte Ansicht) -->
+    <a href="{{ url_for('strafenkatalog') }}" class="mobile-nav-item {% if request.endpoint == 'strafenkatalog' %}active{% endif %}">
+      <i class="bi bi-file-earmark-ruled-fill"></i>
+      <span>Strafen</span>
+    </a>
+
+    <!-- Tab 3: Rolle 1 (Echte Rolle) -->
+    {% set r1_active = (current_user.role == current_user.real_role) %}
+    {% set r1_next = url_for('admin') if current_user.real_role in ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] else (url_for('player_detail', player_id=current_user.player_id) if current_user.player_id else url_for('index')) %}
+    <a href="{{ url_for('switch_role', target_role='reset', next=r1_next) }}" class="mobile-nav-item {% if r1_active %}active{% endif %}">
+      <i class="bi {% if current_user.real_role == 'admin' %}bi-shield-lock-fill{% elif current_user.real_role == 'admin_light' %}bi-shield-fill{% elif current_user.real_role in ['strafen_manager_1', 'strafen_manager_2'] %}bi-file-earmark-ruled-fill{% elif current_user.real_role in ['trikot_manager_1', 'trikot_manager_2'] %}bi-basket-fill{% elif current_user.real_role == 'viewer' %}bi-eye-fill{% elif current_user.real_role == 'player' %}bi-person-fill{% else %}bi-person-fill{% endif %}"></i>
+      <span>
+        {% if current_user.real_role == 'admin' %}Admin
+        {% elif current_user.real_role == 'admin_light' %}Co-Admin
+        {% elif current_user.real_role == 'strafen_manager_1' %}Strafen-Mgr
+        {% elif current_user.real_role == 'strafen_manager_2' %}Strafen-Mgr 2
+        {% elif current_user.real_role == 'trikot_manager_1' %}Trikot-Mgr
+        {% elif current_user.real_role == 'trikot_manager_2' %}Trikot-Mgr 2
+        {% elif current_user.real_role == 'viewer' %}Viewer
+        {% elif current_user.real_role == 'player' %}Spieler
+        {% else %}{{ current_user.real_role|replace('_', ' ')|title }}{% endif %}
+      </span>
+    </a>
+
+    <!-- Tab 4: Rolle 2 (Zweitrolle) -->
+    {% set r2_active = (current_user.role == current_user.secondary_role) %}
+    {% set r2_next = url_for('admin') if current_user.secondary_role in ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] else (url_for('player_detail', player_id=current_user.player_id) if current_user.player_id else url_for('index')) %}
+    <a href="{{ url_for('switch_role', target_role=current_user.secondary_role, next=r2_next) }}" class="mobile-nav-item {% if r2_active %}active{% endif %}">
+      <i class="bi {% if current_user.secondary_role == 'admin' %}bi-shield-lock-fill{% elif current_user.secondary_role == 'admin_light' %}bi-shield-fill{% elif current_user.secondary_role in ['strafen_manager_1', 'strafen_manager_2'] %}bi-file-earmark-ruled-fill{% elif current_user.secondary_role in ['trikot_manager_1', 'trikot_manager_2'] %}bi-basket-fill{% elif current_user.secondary_role == 'viewer' %}bi-eye-fill{% elif current_user.secondary_role == 'player' %}bi-person-fill{% else %}bi-person-fill{% endif %}"></i>
+      <span>
+        {% if current_user.secondary_role == 'admin' %}Admin
+        {% elif current_user.secondary_role == 'admin_light' %}Co-Admin
+        {% elif current_user.secondary_role == 'strafen_manager_1' %}Strafen-Mgr
+        {% elif current_user.secondary_role == 'strafen_manager_2' %}Strafen-Mgr 2
+        {% elif current_user.secondary_role == 'trikot_manager_1' %}Trikot-Mgr
+        {% elif current_user.secondary_role == 'trikot_manager_2' %}Trikot-Mgr 2
+        {% elif current_user.secondary_role == 'viewer' %}Viewer
+        {% elif current_user.secondary_role == 'player' %}Spieler
+        {% else %}{{ current_user.secondary_role|replace('_', ' ')|title }}{% endif %}
+      </span>
+    </a>
+
+    <!-- Tab 5: Rolle 3 (Drittrolle, falls vorhanden) -->
+    {% if has_tertiary %}
+      {% set r3_active = (current_user.role == current_user.tertiary_role) %}
+      {% set r3_next = url_for('admin') if current_user.tertiary_role in ['admin', 'admin_light', 'strafen_manager_1', 'strafen_manager_2', 'trikot_manager_1', 'trikot_manager_2'] else (url_for('player_detail', player_id=current_user.player_id) if current_user.player_id else url_for('index')) %}
+      <a href="{{ url_for('switch_role', target_role=current_user.tertiary_role, next=r3_next) }}" class="mobile-nav-item {% if r3_active %}active{% endif %}">
+        <i class="bi {% if current_user.tertiary_role == 'admin' %}bi-shield-lock-fill{% elif current_user.tertiary_role == 'admin_light' %}bi-shield-fill{% elif current_user.tertiary_role in ['strafen_manager_1', 'strafen_manager_2'] %}bi-file-earmark-ruled-fill{% elif current_user.tertiary_role in ['trikot_manager_1', 'trikot_manager_2'] %}bi-basket-fill{% elif current_user.tertiary_role == 'viewer' %}bi-eye-fill{% elif current_user.tertiary_role == 'player' %}bi-person-fill{% else %}bi-person-fill{% endif %}"></i>
+        <span>
+          {% if current_user.tertiary_role == 'admin' %}Admin
+          {% elif current_user.tertiary_role == 'admin_light' %}Co-Admin
+          {% elif current_user.tertiary_role == 'strafen_manager_1' %}Strafen-Mgr
+          {% elif current_user.tertiary_role == 'strafen_manager_2' %}Strafen-Mgr 2
+          {% elif current_user.tertiary_role == 'trikot_manager_1' %}Trikot-Mgr
+          {% elif current_user.tertiary_role == 'trikot_manager_2' %}Trikot-Mgr 2
+          {% elif current_user.tertiary_role == 'viewer' %}Viewer
+          {% elif current_user.tertiary_role == 'player' %}Spieler
+          {% else %}{{ current_user.tertiary_role|replace('_', ' ')|title }}{% endif %}
+        </span>
+      </a>
+    {% endif %}
+
+  {% else %}
+    <!-- Normale Ansicht für Benutzer mit nur einer Rolle -->
+    {% if current_user.role == 'player' %}
+      <!-- Tab 2: Mein Profil (für Spieler) -->
+      {% if current_user.player_id %}
+      <a href="{{ url_for('player_detail', player_id=current_user.player_id) }}" class="mobile-nav-item {% if request.endpoint == 'player_detail' and request.view_args and request.view_args.get('player_id') == current_user.player_id %}active{% endif %}">
+        <i class="bi bi-person-fill"></i>
+        <span>Mein Profil</span>
+      </a>
+      {% endif %}
+    {% else %}
+      <!-- Tab 2: Kasse (für Admins/Manager) -->
+      <a href="{{ url_for('kasse') }}" class="mobile-nav-item {% if request.endpoint == 'kasse' %}active{% endif %}">
+        <i class="bi bi-cash-coin"></i>
+        <span>Kasse</span>
+      </a>
+    {% endif %}
+
+    <!-- Tab 3: Strafenkatalog -->
+    <a href="{{ url_for('strafenkatalog') }}" class="mobile-nav-item {% if request.endpoint == 'strafenkatalog' %}active{% endif %}">
+      <i class="bi bi-file-earmark-ruled-fill"></i>
+      <span>Strafen</span>
+    </a>
+
+    {% if current_user.role == 'player' %}
+      <!-- Tab 4: Geburtstage (für Spieler) -->
+      <a href="{{ url_for('geburtstage') }}" class="mobile-nav-item {% if request.endpoint == 'geburtstage' %}active{% endif %}">
+        <i class="bi bi-cake2-fill"></i>
+        <span>Geburtstage</span>
+      </a>
+    {% else %}
+      <!-- Tab 4: Admin (für Admins/Manager) -->
+      <a href="{{ url_for('admin') }}" class="mobile-nav-item {% if request.endpoint == 'admin' or request.endpoint == 'switch_role' %}active{% endif %}">
+        <i class="bi bi-gear-fill"></i>
+        <span>Admin</span>
+      </a>
+    {% endif %}
+  {% endif %}
+</nav>
+{% endif %}
+
 </body>
 </html>
+

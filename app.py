@@ -1271,6 +1271,7 @@ class TeamExpense(db.Model):
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     team = db.Column(db.String(50), nullable=False, default='team2')
+    receipt_file_path = db.Column(db.String(255), nullable=True)
     created_by = db.Column(db.String(80), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=get_local_now)
 
@@ -1317,6 +1318,18 @@ def ensure_schema():
                      conn.execute(text("ALTER TABLE admin_user ADD COLUMN tertiary_role TEXT"))
                      conn.commit()
                  print("MIGRATION: Added tertiary_role column to admin_user table.")
+                 
+             # Migration: Add receipt_file_path column to team_expense_real if missing
+             try:
+                 expense_columns = [c['name'] for c in inspector.get_columns('team_expense_real')]
+                 if 'receipt_file_path' not in expense_columns:
+                     with db.engine.connect() as conn:
+                         conn.execute(text("ALTER TABLE team_expense_real ADD COLUMN receipt_file_path TEXT"))
+                         conn.commit()
+                     print("MIGRATION: Added receipt_file_path column to team_expense_real table.")
+             except Exception as inner_e:
+                 print(f"Schema Check Error (TeamExpense Migration): {inner_e}")
+                 
         except Exception as e:
              print(f"Schema Check Error (Migration): {e}")
 
@@ -1365,7 +1378,15 @@ def inject_seasons():
 
 @app.context_processor
 def utility_processor():
-    return dict(quote_plus=quote_plus, now=get_local_now().replace(tzinfo=None), get_deadline=get_deadline)
+    def has_any_role(roles):
+        if not hasattr(current_user, 'role'): return False
+        r = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): r.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): r.add(current_user.tertiary_role)
+        if getattr(current_user, 'real_role', None): r.add(current_user.real_role)
+        return any(x in r for x in roles)
+        
+    return dict(quote_plus=quote_plus, now=get_local_now().replace(tzinfo=None), get_deadline=get_deadline, has_any_role=has_any_role)
 
 # --- Öffentliche Routen ---
 @app.route('/')
@@ -3847,7 +3868,8 @@ def admin():
             'amount': -e.amount,
             'player_name': f"Teamausgabe ({'Zweite' if e.team=='team2' else 'Erste'})",
             'type': 'expense',
-            'category': 'expense'
+            'category': 'expense',
+            'receipt_file_path': getattr(e, 'receipt_file_path', None)
         })
 
     # Sort combined log (most recent first)
@@ -4838,15 +4860,38 @@ def add_team_expense():
         if team not in ['team1', 'team2']:
             return jsonify({'success': False, 'message': 'Ungültiges Team.'})
 
-        # Permission Check
-        if team == 'team1' and current_user.role not in ['admin', 'trikot_manager_1']:
+        # Permission Check (with secondary/tertiary roles)
+        user_roles = {current_user.role}
+        if getattr(current_user, 'secondary_role', None): user_roles.add(current_user.secondary_role)
+        if getattr(current_user, 'tertiary_role', None): user_roles.add(current_user.tertiary_role)
+        if getattr(current_user, 'real_role', None): user_roles.add(current_user.real_role)
+
+        if team == 'team1' and not any(r in ['admin', 'trikot_manager_1'] for r in user_roles):
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
-        if team == 'team2' and current_user.role not in ['admin', 'trikot_manager_2']:
+        if team == 'team2' and not any(r in ['admin', 'trikot_manager_2'] for r in user_roles):
              return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
 
         team_label = "1. Mannschaft" if team == 'team1' else "2. Mannschaft"
         date_val = get_date_from_form(request.form)
-        db.session.add(TeamExpense(description=f"{description} ({team_label})", amount=amount, date=date_val, team=team, created_by=current_user.username))
+        
+        expense = TeamExpense(description=f"{description} ({team_label})", amount=amount, date=date_val, team=team, created_by=current_user.username)
+        db.session.add(expense)
+        db.session.flush() # ID generieren
+
+        # Handle receipt upload (either via normal file picker or direct camera capture)
+        file = request.files.get('receipt_camera')
+        if not file or file.filename == '':
+            file = request.files.get('receipt')
+            
+        if file and file.filename != '':
+            ext = file.filename.rsplit('.', 1)[-1].lower()
+            if ext in {'png', 'jpg', 'jpeg', 'pdf'}:
+                import time
+                filename = secure_filename(f"receipt_{expense.id}_{int(time.time())}.{ext}")
+                receipt_path = os.path.join(app.root_path, 'static', 'app', 'receipts', filename)
+                file.save(receipt_path)
+                expense.receipt_file_path = f"static/app/receipts/{filename}"
+
         db.session.commit()
         trigger_image_regeneration()  # Update Cache
         
@@ -5451,6 +5496,15 @@ def delete_team_expense(tx_id):
                  return jsonify({'success': False, 'message': 'Keine Berechtigung.'});
              return redirect(url_for('admin'))
              
+        # Optional file cleanup
+        if tx.receipt_file_path:
+            full_path = os.path.join(app.root_path, tx.receipt_file_path)
+            if os.path.exists(full_path):
+                try:
+                    os.remove(full_path)
+                except Exception as e:
+                    print(f"Error removing receipt file: {e}")
+                    
         db.session.delete(tx)
         db.session.commit()
         trigger_image_regeneration()  # Update Cache

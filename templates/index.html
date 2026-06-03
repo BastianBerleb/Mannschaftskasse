@@ -271,7 +271,82 @@
 </div>
 {% endif %}
 
+{% if current_user.role == 'player' %}
+<div id="onboardingGuide" class="card onboarding-card mb-4 border-0" style="display: none;">
+  <div class="card-body p-4">
+    <div class="onboarding-header d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex align-items-center">
+        <div class="bg-primary text-white rounded-circle p-2 d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
+          <i class="bi bi-rocket-takeoff-fill" style="font-size: 0.95rem;"></i>
+        </div>
+        <h5 class="card-title mb-0 fw-bold">Erste Schritte: App einrichten</h5>
+      </div>
+      <button type="button" class="btn-close" onclick="dismissOnboardingGuide()" aria-label="Schließen"></button>
+    </div>
+    <p class="text-muted small mb-3">
+      Richte diese Seite als App auf deinem Handy ein, um schnell auf deine Kasse zuzugreifen und Benachrichtigungen bei neuen Strafen zu erhalten.
+    </p>
+    
+    <ul class="onboarding-list">
+      <!-- Schritt 1: PWA Installieren -->
+      <li id="step-pwa" class="onboarding-item">
+        <div class="onboarding-icon-wrapper">
+          <i class="bi bi-phone"></i>
+        </div>
+        <div class="onboarding-text text-start">
+          <div class="fw-bold">Als App auf dem Handy installieren</div>
+          <small class="text-muted">Füge die App zum Startbildschirm hinzu</small>
+        </div>
+        <div>
+          <button id="pwa-install-btn" class="btn btn-outline-primary onboarding-action-btn" onclick="triggerPWAInstall()">Installieren</button>
+          <span id="pwa-completed-badge" class="badge bg-success d-none"><i class="bi bi-check-lg"></i> Installiert</span>
+        </div>
+      </li>
+
+      <!-- Schritt 2: Push Notifications -->
+      <li id="step-push" class="onboarding-item {% if current_user.has_push %}completed{% endif %}">
+        <div class="onboarding-icon-wrapper">
+          <i class="bi bi-bell"></i>
+        </div>
+        <div class="onboarding-text text-start">
+          <div class="fw-bold">Push-Nachrichten aktivieren</div>
+          <small class="text-muted">Erhalte sofort Infos bei neuen Strafen</small>
+        </div>
+        <div>
+          {% if current_user.has_push %}
+            <span class="badge bg-success"><i class="bi bi-check-lg"></i> Aktiv</span>
+          {% else %}
+            <button id="push-activation-btn" class="btn btn-outline-primary onboarding-action-btn" onclick="triggerPushActivation()">Aktivieren</button>
+            <span id="push-completed-badge" class="badge bg-success d-none"><i class="bi bi-check-lg"></i> Aktiv</span>
+          {% endif %}
+        </div>
+      </li>
+
+      <!-- Schritt 3: Biometric WebAuthn Login -->
+      <li id="step-biometric" class="onboarding-item {% if user_has_biometrics %}completed{% endif %}">
+        <div class="onboarding-icon-wrapper">
+          <i class="bi bi-fingerprint"></i>
+        </div>
+        <div class="onboarding-text text-start">
+          <div class="fw-bold">Schnell-Login einrichten</div>
+          <small class="text-muted">Login per FaceID oder Fingerabdruck</small>
+        </div>
+        <div>
+          {% if user_has_biometrics %}
+            <span class="badge bg-success"><i class="bi bi-check-lg"></i> Aktiv</span>
+          {% else %}
+            <button id="biom-activation-btn" class="btn btn-outline-primary onboarding-action-btn" onclick="triggerBiometricSetup()">Einrichten</button>
+            <span id="biom-completed-badge" class="badge bg-success d-none"><i class="bi bi-check-lg"></i> Aktiv</span>
+          {% endif %}
+        </div>
+      </li>
+    </ul>
+  </div>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-center mb-4 px-1 mt-2">
+
     <div>
         <h1 class="h3 fw-bolder mb-0 text-main">Spielerübersicht</h1>
         <small class="text-muted fw-semibold">Saison {{ selected_season }}</small>
@@ -647,11 +722,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (regBtnMain && !hasCredentials) regBtnMain.style.setProperty('display', 'flex', 'important');
     
     const webauthnModal = new bootstrap.Modal(modalEl);
+    if (modalEl) {
+        modalEl.addEventListener('show.bs.modal', loadCredentials);
+    }
     
     // Open modal instead of direct registration
     if (regBtnMain) {
         regBtnMain.addEventListener('click', () => {
-            loadCredentials();
             webauthnModal.show();
         });
     }
@@ -810,6 +887,15 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('✅ Gerät erfolgreich hinzugefügt! Ab jetzt kannst du dich biometrisch anmelden.');
             const btnCol = document.getElementById('webauthn-btn-column');
             if (btnCol) btnCol.style.display = 'none';
+            
+            const biomBtn = document.getElementById('biom-activation-btn');
+            const biomBadge = document.getElementById('biom-completed-badge');
+            if (biomBadge) biomBadge.classList.remove('d-none');
+            if (biomBtn) biomBtn.classList.add('d-none');
+            const step = document.getElementById('step-biometric');
+            if (step) step.classList.add('completed');
+            if (typeof checkOnboardingProgress === 'function') checkOnboardingProgress();
+
             loadCredentials();
         } catch (err) {
             if (err.name === 'NotAllowedError') {
@@ -843,6 +929,114 @@ function bytes_to_base64url(bytes) {
         binary += String.fromCharCode(bytes[i]);
     }
     return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+// --- Onboarding Guide Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    const guide = document.getElementById('onboardingGuide');
+    if (!guide) return;
+    
+    // Check if user dismissed it permanently
+    if (localStorage.getItem('hide_onboarding_guide') === 'true') {
+        return;
+    }
+    
+    checkOnboardingProgress();
+});
+
+function checkOnboardingProgress() {
+    const guide = document.getElementById('onboardingGuide');
+    if (!guide) return;
+    
+    // 1. PWA check
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const stepPwa = document.getElementById('step-pwa');
+    const pwaBtn = document.getElementById('pwa-install-btn');
+    const pwaBadge = document.getElementById('pwa-completed-badge');
+    
+    if (isPWA) {
+        if (stepPwa) stepPwa.classList.add('completed');
+        if (pwaBtn) pwaBtn.classList.add('d-none');
+        if (pwaBadge) pwaBadge.classList.remove('d-none');
+    }
+    
+    // If all are completed, hide the guide automatically
+    const totalSteps = 3;
+    const completedSteps = document.querySelectorAll('.onboarding-item.completed').length;
+    
+    if (completedSteps === totalSteps) {
+        guide.style.display = 'none';
+    } else {
+        guide.style.display = 'block';
+    }
+}
+
+function dismissOnboardingGuide() {
+    const guide = document.getElementById('onboardingGuide');
+    if (guide) {
+        guide.style.transition = 'opacity 0.3s ease';
+        guide.style.opacity = '0';
+        setTimeout(() => {
+            guide.style.display = 'none';
+            localStorage.setItem('hide_onboarding_guide', 'true');
+        }, 300);
+    }
+}
+
+function triggerPWAInstall() {
+    if (window.pwaInstallManager) {
+        window.pwaInstallManager.handleInstallClick();
+    } else {
+        alert("Bitte installiere die App über deinen Browser.");
+    }
+}
+
+async function triggerPushActivation() {
+    const myPlayerId = {{ current_user.player_id if current_user.player_id else 'null' }};
+    if (!myPlayerId) return;
+    
+    const btn = document.getElementById('push-activation-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>...';
+    }
+    
+    try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            alert("Push-Benachrichtigungen werden von diesem Browser nicht unterstützt.");
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = 'Aktivieren';
+            }
+            return;
+        }
+        
+        const reg = await navigator.serviceWorker.ready;
+        await subscribeDeviceForPlayer(myPlayerId, reg, null, true);
+        
+        // UI updates
+        const badge = document.getElementById('push-completed-badge');
+        if (badge) badge.classList.remove('d-none');
+        if (btn) btn.classList.add('d-none');
+        const step = document.getElementById('step-push');
+        if (step) step.classList.add('completed');
+        
+        checkOnboardingProgress();
+    } catch (e) {
+        console.error(e);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Aktivieren';
+        }
+    }
+}
+
+function triggerBiometricSetup() {
+    const modalEl = document.getElementById('webauthnModal');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    }
 }
 </script>
 <script>

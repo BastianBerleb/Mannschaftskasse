@@ -82,9 +82,13 @@ if ('serviceWorker' in navigator) {
   // App Update durchführen
   window.updateApp = function() {
     if (newWorkerWaiting) {
-      newWorkerWaiting.postMessage({ action: 'skipWaiting' });
+      newWorkerWaiting.postMessage({ type: 'SKIP_WAITING', action: 'skipWaiting' });
       newWorkerWaiting = null;
-      window.location.reload();
     }
   };
+
+  // Reload page when new service worker takes control
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
