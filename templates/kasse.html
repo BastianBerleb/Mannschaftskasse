@@ -232,14 +232,18 @@
 
         <!-- Trikotgeld -->
         <div class="col-md-6 col-xl">
-            <div class="stat-card danger p-4">
+            <div class="stat-card {% if trikotgeld_sum >= 0 %}success{% else %}danger{% endif %} p-4">
                  <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <h6 class="text-muted text-uppercase small fw-bold mb-1">Trikotgeld-Topf</h6>
-                        <h2 class="mb-0 fw-bold text-danger">{{ "%.2f"|format(trikotgeld_sum) }} €</h2>
+                        <h2 class="mb-0 fw-bold {% if trikotgeld_sum >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(trikotgeld_sum) }} €</h2>
+                        {% if trikotgeld_games_count < 0 %}
+                        <small class="text-muted">{{ trikotgeld_games_count|abs }} Spiel{% if trikotgeld_games_count|abs != 1 %}e{% endif %} im voraus bezahlt</small>
+                        {% else %}
                         <small class="text-muted">{{ trikotgeld_games_count }} Spiel{% if trikotgeld_games_count != 1 %}e{% endif %} gesammelt</small>
+                        {% endif %}
                     </div>
-                    <div class="stat-icon bg-gradient-danger">
+                    <div class="stat-icon {% if trikotgeld_sum >= 0 %}bg-gradient-success{% else %}bg-gradient-danger{% endif %}">
                          <i class="bi bi-basket3"></i>
                     </div>
                 </div>

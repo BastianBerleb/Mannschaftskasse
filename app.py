@@ -1072,6 +1072,7 @@ class Player(db.Model):
     team1 = db.Column(db.Boolean, nullable=False, default=False)
     team2 = db.Column(db.Boolean, nullable=False, default=False)
     image_path = db.Column(db.String(255), nullable=True) # Pfad zum Profilbild
+    escalation_start_date = db.Column(db.Date, nullable=True) # Startdatum für die Schulden-Eskalation
     subscriptions = db.relationship('PushSubscription', backref='player', lazy='dynamic', cascade="all, delete-orphan")
     transactions = db.relationship('Transaction', backref='player', lazy='dynamic', cascade="all, delete-orphan")
     kistl_transactions = db.relationship('KistlTransaction', backref='player', lazy='dynamic', cascade="all, delete-orphan")
@@ -1271,6 +1272,7 @@ class TeamExpense(db.Model):
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     team = db.Column(db.String(50), nullable=False, default='team2')
+    is_balance_adjustment = db.Column(db.Boolean, nullable=False, default=False)
     receipt_file_path = db.Column(db.String(255), nullable=True)
     created_by = db.Column(db.String(80), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=get_local_now)
@@ -1292,6 +1294,15 @@ class PushLog(db.Model):
     title = db.Column(db.String(200))
     status = db.Column(db.String(20))  # 'ok', 'error', 'removed'
     error_msg = db.Column(db.String(500), nullable=True)
+
+class JerseyDrive(db.Model):
+    __tablename__ = 'jersey_drive'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, default=get_local_now().date)
+    team = db.Column(db.String(50), nullable=False)
+    player_id = db.Column(db.Integer, db.ForeignKey('player.id', ondelete='CASCADE'), nullable=False)
+    player = db.relationship('Player', foreign_keys=[player_id])
+    created_at = db.Column(db.DateTime, default=get_local_now)
 
 # --- Request-Handling ---
 @app.before_request
@@ -1319,6 +1330,13 @@ def ensure_schema():
                      conn.commit()
                  print("MIGRATION: Added tertiary_role column to admin_user table.")
                  
+             player_columns = [c['name'] for c in inspector.get_columns('player')]
+             if 'escalation_start_date' not in player_columns:
+                 with db.engine.connect() as conn:
+                     conn.execute(text("ALTER TABLE player ADD COLUMN escalation_start_date DATE"))
+                     conn.commit()
+                 print("MIGRATION: Added escalation_start_date column to player table.")
+                 
              # Migration: Add receipt_file_path column to team_expense_real if missing
              try:
                  expense_columns = [c['name'] for c in inspector.get_columns('team_expense_real')]
@@ -1327,6 +1345,11 @@ def ensure_schema():
                          conn.execute(text("ALTER TABLE team_expense_real ADD COLUMN receipt_file_path TEXT"))
                          conn.commit()
                      print("MIGRATION: Added receipt_file_path column to team_expense_real table.")
+                 if 'is_balance_adjustment' not in expense_columns:
+                     with db.engine.connect() as conn:
+                         conn.execute(text("ALTER TABLE team_expense_real ADD COLUMN is_balance_adjustment BOOLEAN NOT NULL DEFAULT 0"))
+                         conn.commit()
+                     print("MIGRATION: Added is_balance_adjustment column to team_expense_real table.")
              except Exception as inner_e:
                  print(f"Schema Check Error (TeamExpense Migration): {inner_e}")
                  
@@ -1529,10 +1552,16 @@ def index():
         p._balance_team1_cache = balance_team1_map.get(p.id, 0.0)
         p._fine_balance_team1_cache = fine_team1_map.get(p.id, 0.0)
         p._general_balance_team1_cache = p._balance_team1_cache - p._fine_balance_team1_cache
+        if p._general_balance_team1_cache < 0 and p._fine_balance_team1_cache > 0:
+            p._general_balance_team1_cache += p._fine_balance_team1_cache
+            p._fine_balance_team1_cache = 0.0
         
         p._balance_team2_cache = balance_team2_map.get(p.id, 0.0)
         p._fine_balance_team2_cache = fine_team2_map.get(p.id, 0.0)
         p._general_balance_team2_cache = p._balance_team2_cache - p._fine_balance_team2_cache
+        if p._general_balance_team2_cache < 0 and p._fine_balance_team2_cache > 0:
+            p._general_balance_team2_cache += p._fine_balance_team2_cache
+            p._fine_balance_team2_cache = 0.0
         
         p._kistl_balance_cache = kistl_balance_map.get(p.id, 0)
         p._balance_cache = p._balance_team1_cache + p._balance_team2_cache
@@ -1628,6 +1657,7 @@ def kasse(team_name=None):
     total_deposits = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.amount > 0, 
         Transaction.description != "Startguthaben",
+        ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
         Transaction.team == team_name
     ).scalar() or 0.0
 
@@ -1640,7 +1670,8 @@ def kasse(team_name=None):
 
     # Total Expenses (Team filtered)
     total_team_expenses_all = db.session.query(func.sum(TeamExpense.amount)).filter(
-        TeamExpense.team == team_name
+        TeamExpense.team == team_name,
+        TeamExpense.is_balance_adjustment.is_(False)
     ).scalar() or 0.0
 
     current_balance = start_balance + total_deposits + total_payouts - total_team_expenses_all
@@ -1649,6 +1680,7 @@ def kasse(team_name=None):
     season_deposits = db.session.query(func.sum(Transaction.amount)).filter(
         Transaction.amount > 0,
         Transaction.description != "Startguthaben",
+        ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
         Transaction.date.between(g.start_date, g.end_date),
         Transaction.team == team_name
     ).scalar() or 0.0
@@ -1656,7 +1688,8 @@ def kasse(team_name=None):
     # Seasonal Expenses (Team filtered)
     season_expenses_query = TeamExpense.query.filter(
         TeamExpense.date.between(g.start_date, g.end_date),
-        TeamExpense.team == team_name
+        TeamExpense.team == team_name,
+        TeamExpense.is_balance_adjustment.is_(False)
     )
     season_expenses = season_expenses_query.order_by(TeamExpense.date.desc()).all()
     
@@ -1736,18 +1769,27 @@ def kasse(team_name=None):
         total_debts = 0.0
         total_player_credit = 0.0
 
-    # Trikotgeld Calculation
+    # Trikotgeld Calculation (robust)
+    # Real Trikotgeld bookings act as reset markers; manual quick-adjust entries are added on top.
     last_trikotgeld_expense = TeamExpense.query.filter(
         TeamExpense.team == team_name,
-        TeamExpense.description.ilike('%Trikotgeld%')
+        TeamExpense.description.ilike('%Trikotgeld%'),
+        ~TeamExpense.description.ilike('%Manual Trikotgeld%'),
+        ~TeamExpense.description.ilike('%Trikotgeld-Anpassung%')
     ).order_by(TeamExpense.date.desc()).first()
 
     trikot_query = db.session.query(Transaction.date, Transaction.description).filter(
         Transaction.team == team_name,
         Transaction.description.ilike('%gg.%')
     )
+
+    # Determine cutoff: if there's a real Trikotgeld expense (closure), only count games after that date;
+    # otherwise count games in current season range.
     if last_trikotgeld_expense:
-        trikot_query = trikot_query.filter(Transaction.date > last_trikotgeld_expense.date)
+        cutoff_date = max(last_trikotgeld_expense.date, g.start_date)
+        trikot_query = trikot_query.filter(Transaction.date > cutoff_date)
+    else:
+        trikot_query = trikot_query.filter(Transaction.date.between(g.start_date, g.end_date))
 
     trikotgeld_games_count = trikot_query.distinct().count()
 
@@ -1758,7 +1800,22 @@ def kasse(team_name=None):
     except ValueError:
         trikot_fee = 25.0
 
-    trikotgeld_sum = -(trikotgeld_games_count * trikot_fee)
+    manual_adjustments = db.session.query(func.sum(TeamExpense.amount)).filter(
+        TeamExpense.team == team_name,
+        TeamExpense.date.between(g.start_date, g.end_date),
+        db.or_(
+            TeamExpense.description.ilike('%Manual Trikotgeld%'),
+            TeamExpense.description.ilike('%Trikotgeld-Anpassung%')
+        )
+    )
+    manual_adjustments_sum = manual_adjustments.scalar() or 0.0
+    manual_game_delta = 0
+    if trikot_fee:
+        manual_game_delta = int(round(manual_adjustments_sum / trikot_fee))
+
+    # Der Zähler zeigt den Saldo an: Guthaben kann ihn unter 0 drücken.
+    trikotgeld_games_count = trikotgeld_games_count - manual_game_delta
+    trikotgeld_sum = (-(trikot_query.distinct().count() * trikot_fee)) + manual_adjustments_sum
 
     return render_template('kasse.html', 
                         balance=current_balance, 
@@ -2151,6 +2208,105 @@ def switch_role(target_role):
     if next_url:
         return redirect(next_url)
     return redirect(request.referrer or url_for('index'))
+
+# --- Trikotdienst ---
+@app.route('/trikotdienst')
+@login_required
+def trikotdienst():
+    drives = JerseyDrive.query.filter(
+        JerseyDrive.date >= g.start_date,
+        JerseyDrive.date <= g.end_date
+    ).order_by(JerseyDrive.date.desc()).all()
+    players = Player.query.order_by(Player.name).all()
+    
+    # Statistik berechnen
+    from collections import defaultdict
+    stats_team1 = defaultdict(int)
+    stats_team2 = defaultdict(int)
+    
+    # Initiale 0 für jeden AKTIVEN Spieler (da grundsätzlich alle bei Erster/Zweiter dabei sind)
+    for p in players:
+        if p.is_active:
+            stats_team1[p.id] = 0
+            stats_team2[p.id] = 0
+            
+    # Zählen
+    for drive in drives:
+        if drive.team == 'team1' and drive.player_id in stats_team1:
+            stats_team1[drive.player_id] += 1
+        elif drive.team == 'team2' and drive.player_id in stats_team2:
+            stats_team2[drive.player_id] += 1
+            
+    # Sortieren -> Wenigstes zuerst, dann Alphabetisch
+    sorted_stats_team1 = sorted(
+        [(p_id, count, next((p.name for p in players if p.id == p_id), "Unbekannt")) for p_id, count in stats_team1.items()],
+        key=lambda x: (x[1], x[2])
+    )
+    sorted_stats_team2 = sorted(
+        [(p_id, count, next((p.name for p in players if p.id == p_id), "Unbekannt")) for p_id, count in stats_team2.items()],
+        key=lambda x: (x[1], x[2])
+    )
+    
+    return render_template('trikotdienst.html', 
+                           drives=drives, 
+                           players=players,
+                           stats_team1=sorted_stats_team1,
+                           stats_team2=sorted_stats_team2)
+
+@app.route('/api/trikotdienst/add', methods=['POST'])
+@login_required
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+def add_trikotdienst():
+    data = request.json
+    player_id = data.get('player_id')
+    team = data.get('team')
+    date_str = data.get('date')
+    
+    if not player_id or not team or team not in ['team1', 'team2']:
+         return jsonify({'success': False, 'message': 'Ungültige Daten'}), 400
+         
+    # Berechtigung prüfen: Hat der Nutzer das Recht für dieses Team?
+    if team == 'team1' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_1', 'strafen_manager_1']:
+        return jsonify({'success': False, 'message': 'Keine Berechtigung für die Erste Mannschaft'}), 403
+    if team == 'team2' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_2', 'strafen_manager_2']:
+        return jsonify({'success': False, 'message': 'Keine Berechtigung für die Zweite Mannschaft'}), 403
+         
+    # Check if player exists
+    player_exists = Player.query.get(player_id)
+    if not player_exists:
+        return jsonify({'success': False, 'message': 'Spieler nicht gefunden'}), 404
+         
+    try:
+        drive_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else get_local_now().date()
+        new_drive = JerseyDrive(date=drive_date, team=team, player_id=player_id)
+        db.session.add(new_drive)
+        db.session.commit()
+        log_audit('TRIKOTDIENST', 'ADD_DRIVE', f"Trikotdienst eingetragen für PlayerID {player_id} ({team}) am {drive_date}")
+        return jsonify({'success': True, 'message': 'Eintrag gespeichert'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/trikotdienst/delete/<int:drive_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'])
+def delete_trikotdienst(drive_id):
+    drive = JerseyDrive.query.get_or_404(drive_id)
+    
+    # Berechtigung prüfen: Hat der Nutzer das Recht für dieses Team?
+    if drive.team == 'team1' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_1', 'strafen_manager_1']:
+        return jsonify({'success': False, 'message': 'Keine Berechtigung für die Erste Mannschaft'}), 403
+    if drive.team == 'team2' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_2', 'strafen_manager_2']:
+        return jsonify({'success': False, 'message': 'Keine Berechtigung für die Zweite Mannschaft'}), 403
+
+    try:
+        db.session.delete(drive)
+        db.session.commit()
+        log_audit('TRIKOTDIENST', 'DELETE_DRIVE', f"Trikotdienst gelöscht: {drive.date} ({drive.team}) PlayerID {drive.player_id}")
+        return jsonify({'success': True, 'message': 'Eintrag gelöscht'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # ---- WEBAUTHN / BIOMETRISCHE LOGIN FEATURES ----
 
@@ -2550,6 +2706,7 @@ def generate_season_report():
         total_deposits_before_t1 = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date < g.start_date,
             Transaction.amount > 0,
+            ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
             Transaction.team == 'team1'
         ).scalar() or 0.0
 
@@ -2563,6 +2720,7 @@ def generate_season_report():
         total_deposits_before_t2 = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date < g.start_date,
             Transaction.amount > 0,
+            ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
             (Transaction.team == 'team2') | (Transaction.team == None)
         ).scalar() or 0.0
 
@@ -2576,12 +2734,14 @@ def generate_season_report():
         # Ausgaben vor Saison
         total_expenses_before_t1 = db.session.query(func.sum(TeamExpense.amount)).filter(
             TeamExpense.date < g.start_date,
-            TeamExpense.team == 'team1'
+            TeamExpense.team == 'team1',
+            TeamExpense.is_balance_adjustment.is_(False)
         ).scalar() or 0.0
         
         total_expenses_before_t2 = db.session.query(func.sum(TeamExpense.amount)).filter(
             TeamExpense.date < g.start_date,
-            (TeamExpense.team == 'team2') | (TeamExpense.team == None)
+            (TeamExpense.team == 'team2') | (TeamExpense.team == None),
+            TeamExpense.is_balance_adjustment.is_(False)
         ).scalar() or 0.0
         
         kasse_balance_at_season_start_t1 = initial_val_t1 + total_deposits_before_t1 + total_payouts_before_t1 - total_expenses_before_t1
@@ -2594,6 +2754,7 @@ def generate_season_report():
         income_this_season = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date.between(g.start_date, g.end_date),
             Transaction.amount > 0,
+            ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
             Transaction.description != "Startguthaben"
         ).scalar() or 0.0
         
@@ -2601,6 +2762,7 @@ def generate_season_report():
         income_team1 = db.session.query(func.sum(Transaction.amount)).filter(
             Transaction.date.between(g.start_date, g.end_date),
             Transaction.amount > 0,
+            ~Transaction.description.like("Auto-Tilgung Guthaben -> Strafe%"),
             Transaction.description != "Startguthaben",
             Transaction.team == 'team1'
         ).scalar() or 0.0
@@ -2623,7 +2785,8 @@ def generate_season_report():
         ).scalar() or 0.0
         
         expenses_this_season_list = TeamExpense.query.filter(
-            TeamExpense.date.between(g.start_date, g.end_date)
+            TeamExpense.date.between(g.start_date, g.end_date),
+            TeamExpense.is_balance_adjustment.is_(False)
         ).order_by(TeamExpense.date).all()
         expenses_total_this_season = sum(e.amount for e in expenses_this_season_list)
 
@@ -3604,13 +3767,26 @@ def strafenkatalog_image():
 def strafenkatalog():
     fines_team1 = Fine.query.filter(Fine.team == 'team1').order_by(Fine.type, Fine.description).all()
     fines_team2 = Fine.query.filter((Fine.team == 'team2') | (Fine.team == None)).order_by(Fine.type, Fine.description).all()
-    return render_template('strafenkatalog.html', fines_team1=fines_team1, fines_team2=fines_team2)
+    
+    # Determine which tab to show by default
+    default_team1 = False
+    if current_user.role in ['strafen_manager_1', 'trikot_manager_1']:
+        default_team1 = True
+    elif current_user.role == 'player' and current_user.player_id:
+        player_obj = Player.query.get(current_user.player_id)
+        if player_obj and player_obj.team1 and not player_obj.team2:
+            default_team1 = True
+            
+    return render_template('strafenkatalog.html', 
+                           fines_team1=fines_team1, 
+                           fines_team2=fines_team2, 
+                           default_team1=default_team1)
 
 @app.route('/geburtstage')
 @login_required
 @role_required(VALID_ROLES)
 def geburtstage():
-    players = Player.query.filter_by(is_active=True).all()
+    players = Player.query.all()  # Include archived players
     today = date.today()
     birthday_list = []
     
@@ -4251,10 +4427,16 @@ def add_custom_fine():
         player = Player.query.get_or_404(player_id)
         old_balance, date_val = player.balance, get_date_from_form(request.form)
         
+        is_trainer = request.form.get('is_trainer') == '1'
+        if is_trainer:
+            description += " (Trainer doppelt)"
+            
         if fine_type == 'money':
             amount = float(amount_str)
             if math.isnan(amount) or math.isinf(amount) or amount <= 0:
                 raise ValueError("Ungültiger Betrag.")
+            if is_trainer:
+                amount *= 2
             final_amt = abs(amount)
             
             # Auto-Settle Logic
@@ -4300,7 +4482,10 @@ def add_custom_fine():
         else: # fine_type == 'kistl'
             # Kistl is typically Team 2? Allow both? Assuming Kistl is tied to team account logic if needed.
             # Currently KistlTransaction has no team column. 
-            db.session.add(KistlTransaction(player_id=player.id, description=description, amount=-abs(int(amount_str)), date=date_val, created_by=current_user.username))
+            kistl_amount = abs(int(amount_str))
+            if is_trainer:
+                kistl_amount *= 2
+            db.session.add(KistlTransaction(player_id=player.id, description=description, amount=-kistl_amount, date=date_val, created_by=current_user.username))
             message = "Individuelle Kistl-Strafe verbucht."
         
         db.session.commit()
@@ -4311,7 +4496,7 @@ def add_custom_fine():
         if fine_type == 'money':
             log_audit("CREATE", "CUSTOM_TRANSACTION", f"Individuelle Strafe '{description}' ({team_label}) (-{amount}€) für {player.name} erstellt.")
         else:
-            log_audit("CREATE", "CUSTOM_KISTL", f"Individuelle Kistl-Strafe '{description}' (-{amount_str}) für {player.name} erstellt.")
+            log_audit("CREATE", "CUSTOM_KISTL", f"Individuelle Kistl-Strafe '{description}' (-{kistl_amount}) für {player.name} erstellt.")
         
         if fine_type == 'money':
             url_to_open = url_for('player_detail', player_id=player_id, _external=True)
@@ -4342,6 +4527,7 @@ def check_duplicate():
     date_val = data.get('date')
     tx_type = data.get('type')
     amount = data.get('amount')
+    is_trainer = data.get('is_trainer') == '1'
     
     if not player_id or not date_val or not tx_type:
         return jsonify({"exists": False})
@@ -4359,15 +4545,27 @@ def check_duplicate():
             fine = Fine.query.get(fine_id)
             if not fine:
                 return jsonify({"exists": False})
-            query = query.filter(Transaction.description.like(f"%{fine.description}%"))
+            
+            # Need to consider description modification for trainer
+            desc_search = f"%{fine.description}%"
+            if is_trainer:
+                desc_search = f"%{fine.description}%Trainer doppelt%"
+            
+            query = query.filter(Transaction.description.like(desc_search))
             if amount:
-                query = query.filter(Transaction.amount == -abs(float(amount)))
+                chk_amt = abs(float(amount))
+                if is_trainer: chk_amt *= 2
+                query = query.filter(Transaction.amount == -chk_amt)
 
         elif tx_type == 'custom_fine':
             desc = data.get('description', '')
+            if is_trainer:
+                desc += " (Trainer doppelt)"
             query = query.filter(Transaction.description.like(f"%{desc}%"))
             if amount:
-                query = query.filter(Transaction.amount == -abs(float(amount)))
+                chk_amt = abs(float(amount))
+                if is_trainer: chk_amt *= 2
+                query = query.filter(Transaction.amount == -chk_amt)
 
         elif tx_type == 'payment':
             query = query.filter(Transaction.amount > 0)
@@ -4410,7 +4608,10 @@ def add_transaction():
         except:
             multiplier = 1
         
-        final_amount = fine.amount * multiplier
+        is_trainer = request.form.get('is_trainer') == '1'
+        trainer_multiplier = 2 if is_trainer else 1
+        
+        final_amount = fine.amount * multiplier * trainer_multiplier
 
         # Determine logical Category Label for Log
         cat_labels = {'game': 'Spiel', 'training': 'Training', 'general': 'Allg.'}
@@ -4427,6 +4628,9 @@ def add_transaction():
                 tx_description = f"Strafe [{cat_label}]: {multiplier}x {fine.description}"
         else:
             tx_description = f"Strafe [{cat_label}]: {fine.description}"
+
+        if is_trainer:
+            tx_description += " (Trainer doppelt)"
 
         team_label = "1. Mannschaft" if target_team == 'team1' else "2. Mannschaft"
         tx_description = f"{tx_description} ({team_label})"
@@ -5673,6 +5877,77 @@ def reject_game_fee(request_id):
     return redirect(url_for('admin'))
 
 
+@app.route('/admin/adjust-game-fee-quick', methods=['POST'])
+@login_required
+@role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
+def adjust_game_fee_quick():
+    """Schnelle +/- Anpassung des Trikotgeldtopfs um ein Spiel (25€)"""
+    try:
+        team = request.form.get('team', 'team2')  # team1 oder team2
+        action = request.form.get('action', 'add')  # add oder remove
+        
+        # Permission check
+        if team == 'team1' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_1']:
+            return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 1.'})
+        if team == 'team2' and current_user.role not in ['admin', 'admin_light', 'trikot_manager_2']:
+            return jsonify({'success': False, 'message': 'Keine Berechtigung für Team 2.'})
+        
+        if team not in ['team1', 'team2']:
+            return jsonify({'success': False, 'message': 'Ungültiges Team.'})
+        if action not in ['add', 'remove']:
+            return jsonify({'success': False, 'message': 'Ungültige Aktion.'})
+        
+        # Get the game fee from settings
+        settings = {s.key: s.value for s in KasseSetting.query.all()}
+        fee_key = 'trikotgeld_fee_team1' if team == 'team1' else 'trikotgeld_fee_team2'
+        try:
+            game_fee = float(settings.get(fee_key, '25.00'))
+        except (ValueError, TypeError):
+            game_fee = 25.00
+        
+        team_label = "1. Mannschaft" if team == 'team1' else "2. Mannschaft"
+
+        # Store amount with sign:
+        # + button = one game added to the trikot fee counter -> negative effect on the pot
+        # - button = one game removed from the counter -> positive effect on the pot
+        if action == 'add':
+            stored_amount = -game_fee
+            action_desc = "hinzugefügt"
+            message = f'✅ Trikotgeld-Anpassung: -1 Spiel ({game_fee}€) für {team_label}'
+        else:
+            stored_amount = game_fee
+            action_desc = "entfernt"
+            message = f'✅ Trikotgeld-Anpassung: +1 Spiel ({game_fee}€) für {team_label}'
+
+        description = f"Trikotgeld-Anpassung {action_desc} ({team_label})"
+        
+        # Create TeamExpense entry (amount can be positive or negative)
+        expense = TeamExpense(
+            date=get_local_now().date(),
+            description=description,
+            amount=stored_amount,  # Store with sign
+            team=team,
+            is_balance_adjustment=True,
+            created_by=current_user.username
+        )
+        
+        db.session.add(expense)
+        db.session.commit()
+        
+        log_audit("CREATE", "GAME_FEE_ADJUSTMENT", f"Trikotgeld-Anpassung ({team_label}) um 1 Spiel {action_desc}.")
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'amount': f'{abs(stored_amount):.2f}'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Fehler in adjust_game_fee_quick: {e}")
+        return jsonify({'success': False, 'message': f'Fehler: {str(e)}'})
+
+
 @app.route('/admin/add-game-fee', methods=['POST'])
 @login_required
 @role_required(['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'])
@@ -5907,7 +6182,9 @@ def spieltag_log():
         Transaction.team,
         Transaction.amount
     ).filter(
-        Transaction.description.ilike('%gg.%')
+        Transaction.description.ilike('%gg.%'),
+        Transaction.date >= g.start_date,
+        Transaction.date <= g.end_date
     ).all()
 
     games_dict = {}
@@ -6085,8 +6362,8 @@ def delete_user(user_id):
 @role_required(['admin', 'admin_light'])
 def save_settings():
     # Helper to handle checkboxes (if present='1', else '0')
-    doubling_t1 = '1' if request.form.get('doubling_active_team1') else '0'
-    doubling_t2 = '1' if request.form.get('doubling_active_team2') else '0'
+    escalation_t1 = '1' if request.form.get('escalation_active_team1') else '0'
+    escalation_t2 = '1' if request.form.get('escalation_active_team2') else '0'
 
     notify_roles = request.form.getlist('admin_notify_roles')
     # If the form doesn't contain 'admin_notify_roles', there is a catch: 
@@ -6108,8 +6385,11 @@ def save_settings():
         'trikotgeld_fee_team1': request.form.get('trikotgeld_fee_team1'),
         'trikotgeld_fee_team2': request.form.get('trikotgeld_fee_team2'),
         'session_lifetime_days': request.form.get('session_lifetime_days'),
-        'doubling_active_team1': doubling_t1,
-        'doubling_active_team2': doubling_t2,
+        'escalation_active_team1': escalation_t1,
+        'escalation_active_team2': escalation_t2,
+        'escalation_threshold': request.form.get('escalation_threshold') or '25',
+        'escalation_days': request.form.get('escalation_days') or '7',
+        'escalation_penalty': request.form.get('escalation_penalty') or '5',
         'admin_notify_roles': notify_roles_str
     }
     for key, value in settings_to_save.items():

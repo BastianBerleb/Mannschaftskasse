@@ -1,0 +1,299 @@
+{% set title = 'Trikotdienst' %}
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Trikotdienst Übersicht</h2>
+        {% include "_season_selector.html" %}
+    </div>
+
+    <!-- Tabs für die Teams -->
+    <ul class="nav nav-tabs mb-4 trikotdienst-tabs" id="trikotTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="team1-tab" data-bs-toggle="tab" data-bs-target="#team1" type="button" role="tab" aria-controls="team1" aria-selected="true">Erste</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="team2-tab" data-bs-toggle="tab" data-bs-target="#team2" type="button" role="tab" aria-controls="team2" aria-selected="false">Zweite</button>
+        </li>
+    </ul>
+
+    {% set is_manager = current_user.is_authenticated and current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2', 'strafen_manager_1', 'strafen_manager_2'] %}
+    {% set is_manager_team1 = current_user.is_authenticated and current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'strafen_manager_1'] %}
+    {% set is_manager_team2 = current_user.is_authenticated and current_user.role in ['admin', 'admin_light', 'trikot_manager_2', 'strafen_manager_2'] %}
+
+    <div class="tab-content" id="trikotTabsContent">
+        <!-- TEAM 1 TAB -->
+        <div class="tab-pane fade show active" id="team1" role="tabpanel" aria-labelledby="team1-tab">
+            <div class="row">
+                <!-- Statistik -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">Ranking (Wer muss fahren?)</h5>
+                        </div>
+                        <ul class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                            {% for p_id, count, name in stats_team1 %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center {% if count == 0 %}list-group-item-danger{% endif %}">
+                                {{ name }}
+                                <span class="badge bg-secondary rounded-pill">{{ count }} x</span>
+                            </li>
+                            {% else %}
+                            <li class="list-group-item text-muted">Keine Spieler im Team 1 gefunden</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Fahrten & Verwaltung -->
+                <div class="col-md-6 mb-4">
+                    {% if is_manager_team1 %}
+                    <div class="card mb-3">
+                        <div class="card-header bg-dark text-white">
+                            <h5 class="mb-0">Fahrt eintragen (Erste)</h5>
+                        </div>
+                        <div class="card-body">
+                            <form class="trikotForm" data-team="team1">
+                                <div class="mb-2">
+                                    <label class="form-label">Datum der Fahrt:</label>
+                                    <input type="date" class="form-control" name="date" required value="{{ current_date|default('') }}">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Wer ist gefahren?</label>
+                                    <select name="player_id" class="form-select searchable-select" required>
+                                        <option value="" disabled selected>-- Spieler wählen --</option>
+                                        {% for p in players if p.is_active %}
+                                        <option value="{{ p.id }}">{{ p.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 mt-2">Eintragen</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">Letzte Fahrten (Erste)</h5>
+                        </div>
+                        <ul class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                            {% set team1_drives = drives | selectattr("team", "equalto", "team1") | list %}
+                            {% for drive in team1_drives %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ drive.date.strftime('%d.%m.%Y') }}</strong><br>
+                                    <small>{{ drive.player.name }}</small>
+                                </div>
+                                {% if is_manager_team1 %}
+                                <button class="btn btn-sm btn-outline-danger deleteDriveBtn" data-id="{{ drive.id }}">Löschen</button>
+                                {% endif %}
+                            </li>
+                            {% else %}
+                            <li class="list-group-item text-muted">Noch keine Fahrten eingetragen.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TEAM 2 TAB -->
+        <div class="tab-pane fade" id="team2" role="tabpanel" aria-labelledby="team2-tab">
+            <div class="row">
+                <!-- Statistik -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">Ranking (Wer muss fahren?)</h5>
+                        </div>
+                        <ul class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                            {% for p_id, count, name in stats_team2 %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center {% if count == 0 %}list-group-item-danger{% endif %}">
+                                {{ name }}
+                                <span class="badge bg-secondary rounded-pill">{{ count }} x</span>
+                            </li>
+                            {% else %}
+                            <li class="list-group-item text-muted">Keine Spieler im Team 2 gefunden</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Fahrten & Verwaltung -->
+                <div class="col-md-6 mb-4">
+                    {% if is_manager_team2 %}
+                    <div class="card mb-3">
+                        <div class="card-header bg-dark text-white">
+                            <h5 class="mb-0">Fahrt eintragen (Zweite)</h5>
+                        </div>
+                        <div class="card-body">
+                            <form class="trikotForm" data-team="team2">
+                                <div class="mb-2">
+                                    <label class="form-label">Datum der Fahrt:</label>
+                                    <input type="date" class="form-control" name="date" required value="{{ current_date|default('') }}">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Wer ist gefahren?</label>
+                                    <select name="player_id" class="form-select searchable-select" required>
+                                        <option value="" disabled selected>-- Spieler wählen --</option>
+                                        {% for p in players if p.is_active %}
+                                        <option value="{{ p.id }}">{{ p.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 mt-2">Eintragen</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">Letzte Fahrten (Zweite)</h5>
+                        </div>
+                        <ul class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                            {% set team2_drives = drives | selectattr("team", "equalto", "team2") | list %}
+                            {% for drive in team2_drives %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ drive.date.strftime('%d.%m.%Y') }}</strong><br>
+                                    <small>{{ drive.player.name }}</small>
+                                </div>
+                                {% if is_manager_team2 %}
+                                <button class="btn btn-sm btn-outline-danger deleteDriveBtn" data-id="{{ drive.id }}">Löschen</button>
+                                {% endif %}
+                            </li>
+                            {% else %}
+                            <li class="list-group-item text-muted">Noch keine Fahrten eingetragen.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Tom Select CSS and JS injected -->
+<link href='https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css' rel='stylesheet' crossorigin="anonymous">
+<script src='https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js' crossorigin="anonymous"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // Initialize Tom Select for player search
+        const tsSettings = {
+            create: false,
+            sortField: { field: 'text', direction: 'asc' },
+            plugins: ['clear_button']
+        };
+        
+        document.querySelectorAll('.searchable-select').forEach(function(el) {
+            new TomSelect(el, tsSettings);
+        });
+
+        // Form submission for adding drives
+        document.querySelectorAll('.trikotForm').forEach(form => {
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const team = this.getAttribute('data-team');
+                const formData = new FormData(this);
+                
+                const playerId = formData.get('player_id');
+                
+                if (!playerId) {
+                    alert('Bitte wähle einen gültigen Spieler aus.');
+                    return;
+                }
+
+                const data = {
+                    team: team,
+                    date: formData.get('date'),
+                    player_id: playerId
+                };
+                
+                try {
+                    const response = await fetch('/api/trikotdienst/add', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify(data)
+                    });
+                    const resData = await response.json();
+                    
+                    if (resData.success) {
+                        // Reload and keep current tab open
+                        sessionStorage.setItem('activeTrikotTab', `#${team}`);
+                        location.reload();
+                    } else {
+                        alert('Fehler: ' + resData.message);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Ein Netzwerkfehler ist aufgetreten.');
+                }
+            });
+        });
+
+        // Delete button for removing drives
+        document.querySelectorAll('.deleteDriveBtn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                if (!confirm('Eintrag wirklich löschen?')) return;
+                
+                const driveId = this.getAttribute('data-id');
+                const team = this.closest('.tab-pane').id; // Find which tab we are in
+                try {
+                    const response = await fetch('/api/trikotdienst/delete/' + driveId, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token() }}'
+                        }
+                    });
+                    const resData = await response.json();
+                    
+                    if (resData.success) {
+                        // Reload and keep current tab open
+                        sessionStorage.setItem('activeTrikotTab', `#${team}`);
+                        location.reload();
+                    } else {
+                        alert('Fehler: ' + resData.message);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Ein Netzwerkfehler ist aufgetreten.');
+                }
+            });
+        });
+
+        // Restore active tab after reload
+        const activeTabStr = sessionStorage.getItem('activeTrikotTab');
+        if (activeTabStr) {
+            const tabButton = document.querySelector(`button[data-bs-target="${activeTabStr}"]`);
+            if (tabButton) {
+                const tabInstance = new bootstrap.Tab(tabButton);
+                tabInstance.show();
+            }
+            sessionStorage.removeItem('activeTrikotTab');
+        }
+        
+        // Auto-fill last Sunday's date if empty (or today if Sunday)
+        function getLastSunday() {
+            const d = new Date();
+            const day = d.getDay(); // 0 is Sunday
+            d.setDate(d.getDate() - day);
+            // Ensure local timezone doesn't mess up the date string
+            return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+
+        const defaultDate = getLastSunday();
+        document.querySelectorAll('input[type="date"]').forEach(input => {
+            if (!input.value) input.value = defaultDate;
+        });
+    });
+</script>
+{% endblock %}

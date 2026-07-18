@@ -28,7 +28,7 @@
                         <div class="text-muted" style="font-size:0.7em;">{{ tx.created_by or '' }}</div>
                     </td>
                     <td class="align-middle">
-                        {{ tx.description }} 
+                        {{ tx.description.replace('Manual Trikotgeld', 'Trikotgeld-Anpassung') if tx.__class__.__name__ == 'TeamExpense' else tx.description }} 
                         <span class="text-muted d-block small">{{ tx.player.name if tx.player else '' }}</span>
                     </td>
                     <td class="text-end align-middle">
@@ -39,7 +39,11 @@
                         {% elif tx.__class__.__name__ == 'KistlTransaction' %}
                             <span class="badge bg-warning text-dark border shadow-sm">{{ tx.amount }} Kistl</span>
                         {% elif tx.__class__.__name__ == 'TeamExpense' %}
-                            <span class="fw-bold font-monospace text-danger">-{{ "%.2f €"|format(tx.amount) }}</span>
+                            {% if 'Trikotgeld-Anpassung' in tx.description %}
+                                <span class="fw-bold font-monospace {% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">{{ "%+.2f €"|format(tx.amount) }}</span>
+                            {% else %}
+                                <span class="fw-bold font-monospace text-danger">-{{ "%.2f €"|format(tx.amount|abs) }}</span>
+                            {% endif %}
                         {% endif %}
                     </td>
                     <td class="text-center align-middle">

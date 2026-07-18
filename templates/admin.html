@@ -305,7 +305,7 @@
                               <label class="form-label small text-muted">Verwendungszweck</label>
                               <input type="hidden" name="payment_category" value="standard">
                               <div class="form-text small mb-2 text-primary">
-                                <i class="bi bi-info-circle"></i> Info: Jede Einzahlung tilgt <strong>immer zuerst offene Strafen</strong>. Der restliche Betrag geht ins Guthaben (Trikotgeld).
+                                                                <i class="bi bi-info-circle"></i> Info: Nur bei einem <strong>vollständigen Betrag</strong> werden offene Strafen zuerst getilgt. Ein Restbetrag geht ins Guthaben (Trikotgeld).
                               </div>
                           </div>
                           <div class="col-12">
@@ -359,6 +359,14 @@
                               <input type="number" name="multiplier" id="fine_multiplier" class="form-control" value="1" min="1">
                                <div class="form-text text-muted">Die Strafe enthält "pro", daher können Sie hier die Anzahl eingeben.</div>
                           </div>
+                          <div class="col-12 mt-2">
+                              <div class="form-check">
+                                  <input class="form-check-input" type="checkbox" name="is_trainer" value="1" id="is_trainer_catalog_admin">
+                                  <label class="form-check-label" for="is_trainer_catalog_admin">
+                                      Trainer? (Strafe verdoppeln)
+                                  </label>
+                              </div>
+                          </div>
                           <div class="col-12 mt-4">
                               <button type="submit" class="btn btn-danger w-100 py-2">Strafe buchen</button>
                           </div>
@@ -383,6 +391,14 @@
                           <div class="col-12"><label class="small text-muted">Grund</label><input type="text" name="description" class="form-control" placeholder="Grund" required></div>
                           <div class="col-8"><label class="small text-muted">Betrag/Menge</label><input type="number" step="any" name="amount" class="form-control" required></div>
                           <div class="col-4"><label class="small text-muted">Einheit</label><select name="type" class="form-select"><option value="money">€</option><option value="kistl">Kistl</option></select></div>
+                          <div class="col-12 mt-2">
+                              <div class="form-check">
+                                  <input class="form-check-input" type="checkbox" name="is_trainer" value="1" id="is_trainer_custom_admin">
+                                  <label class="form-check-label" for="is_trainer_custom_admin">
+                                      Trainer? (Strafe verdoppeln)
+                                  </label>
+                              </div>
+                          </div>
                           <div class="col-12 mt-3"><button type="submit" class="btn btn-danger w-100">Buchen</button></div>
                        </div>
                   </form>
@@ -813,6 +829,9 @@
     <div class="tab-pane fade" id="pane-system" role="tabpanel">
         <ul class="nav nav-pills mb-3" role="tablist">
             <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-log">Protokoll</button></li>
+            {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-gamefee-adjust">⚡ Trikotgeld-Topf</button></li>
+            {% endif %}
             {% if current_user.role in ['admin', 'admin_light'] %}
             <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-settings">Einstellungen</button></li>
             {% endif %}
@@ -825,6 +844,56 @@
         </ul>
         
         <div class="tab-content">
+            <!-- Trikotgeld-Topf Adjustment Tab -->
+            {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1', 'trikot_manager_2'] %}
+            <div class="tab-pane fade" id="pills-gamefee-adjust">
+                <h5 class="mb-3">⚡ Trikotgeld-Topf Schnell-Anpassung</h5>
+                <p class="text-muted small mb-4">Mit den Buttons können Sie schnell ein Spiel ({{ settings.get('trikotgeld_fee_team1', '25.00') }}€ / {{ settings.get('trikotgeld_fee_team2', '25.00') }}€) zum Topf hinzufügen oder entfernen.</p>
+                
+                <div class="row g-3">
+                    {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_1'] %}
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body text-center">
+                                <h6 class="card-title text-muted mb-3">1. Mannschaft</h6>
+                                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                                    <button class="btn btn-success btn-lg" onclick="adjustGameFee('team1', 'add')">
+                                        <i class="bi bi-plus-circle"></i> +1 Spiel
+                                    </button>
+                                    <button class="btn btn-danger btn-lg" onclick="adjustGameFee('team1', 'remove')">
+                                        <i class="bi bi-dash-circle"></i> -1 Spiel
+                                    </button>
+                                </div>
+                                <small class="d-block mt-2 text-muted">Betrag: {{ settings.get('trikotgeld_fee_team1', '25.00') }}€ pro Spiel</small>
+                                <div id="gamefee-response-team1" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if current_user.role in ['admin', 'admin_light', 'trikot_manager_2'] %}
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body text-center">
+                                <h6 class="card-title text-muted mb-3">2. Mannschaft</h6>
+                                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                                    <button class="btn btn-success btn-lg" onclick="adjustGameFee('team2', 'add')">
+                                        <i class="bi bi-plus-circle"></i> +1 Spiel
+                                    </button>
+                                    <button class="btn btn-danger btn-lg" onclick="adjustGameFee('team2', 'remove')">
+                                        <i class="bi bi-dash-circle"></i> -1 Spiel
+                                    </button>
+                                </div>
+                                <small class="d-block mt-2 text-muted">Betrag: {{ settings.get('trikotgeld_fee_team2', '25.00') }}€ pro Spiel</small>
+                                <div id="gamefee-response-team2" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
             <div class="tab-pane fade show active" id="pills-log">
                 <div class="d-flex justify-content-between mb-2">
                     <h5>Log</h5>
@@ -848,11 +917,16 @@
                                 {{ tx.date.strftime('%d.%m.%y') }}
                                 <div class="small text-muted" style="font-size:0.7em;">{{ tx.created_by or '' }}</div>
                             </td>
-                            <td>{{ tx.description }} <span class="text-muted d-block small">{{ tx.player.name if tx.player else '' }}</span></td>
+                            <td>{{ tx.description.replace('Manual Trikotgeld', 'Trikotgeld-Anpassung') if tx.__class__.__name__ == 'TeamExpense' else tx.description }} <span class="text-muted d-block small">{{ tx.player.name if tx.player else '' }}</span></td>
                              <td class="text-end">
                                   {% if tx.__class__.__name__ == 'Transaction' %}<span class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">{{ "%.2f €"|format(tx.amount) }}</span>
                                   {% elif tx.__class__.__name__ == 'KistlTransaction' %}<span class="transaction-kistl">{{ tx.amount }} Kistl</span>
-                                  {% elif tx.__class__.__name__ == 'TeamExpense' %}<span class="text-danger">-{{ "%.2f €"|format(tx.amount) }}</span>
+                                                                    {% elif tx.__class__.__name__ == 'TeamExpense' %}
+                                                                        {% if 'Trikotgeld-Anpassung' in tx.description %}
+                                                                            <span class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">{{ "%+.2f €"|format(tx.amount) }}</span>
+                                                                        {% else %}
+                                                                            <span class="text-danger">-{{ "%.2f €"|format(tx.amount|abs) }}</span>
+                                                                        {% endif %}
                                   {% endif %}
                             </td>
                             <td>
@@ -1010,20 +1084,35 @@
                          </div>
                      </div>
                      
-                     <h6>Strafen-Verdopplung</h6>
-                     <p class="text-muted small mb-2">Automatische Verdopplung von Strafen nach Ablauf der Frist (z.B. nach 4 Wochen).</p>
-                     <div class="row g-2 mb-3">
+                     <h6>Schulden-Eskalation</h6>
+                     <p class="text-muted small mb-2">Automatische Strafe, wenn der Gesamt-Kontostand eines Spielers zu niedrig ist.</p>
+                     <div class="row g-2 mb-2">
                          <div class="col-md-6">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="doubling_active_team1" name="doubling_active_team1" {% if settings.get('doubling_active_team1') == '1' %}checked{% endif %}>
-                                <label class="form-check-label small" for="doubling_active_team1">Aktiv für Team 1</label>
+                                <input class="form-check-input" type="checkbox" id="escalation_active_team1" name="escalation_active_team1" {% if settings.get('escalation_active_team1') == '1' %}checked{% endif %}>
+                                <label class="form-check-label small" for="escalation_active_team1">Aktiv für Team 1</label>
                             </div>
                          </div>
                          <div class="col-md-6">
                             <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="doubling_active_team2" name="doubling_active_team2" {% if settings.get('doubling_active_team2') == '1' %}checked{% endif %}>
-                                <label class="form-check-label small" for="doubling_active_team2">Aktiv für Team 2</label>
+                                <input class="form-check-input" type="checkbox" id="escalation_active_team2" name="escalation_active_team2" {% if settings.get('escalation_active_team2') == '1' %}checked{% endif %}>
+                                <label class="form-check-label small" for="escalation_active_team2">Aktiv für Team 2</label>
                             </div>
+                         </div>
+                     </div>
+                     <div class="row g-2 mb-3">
+                         <div class="col-md-4">
+                             <label class="form-label small">Schwellenwert (€)</label>
+                             <input type="number" class="form-control form-control-sm" name="escalation_threshold" min="0" step="1" value="{{ settings.get('escalation_threshold', '25') }}">
+                             <div class="form-text" style="font-size: 0.7rem;">Minuswert, z.B. 25</div>
+                         </div>
+                         <div class="col-md-4">
+                             <label class="form-label small">Frist (Tage)</label>
+                             <input type="number" class="form-control form-control-sm" name="escalation_days" min="1" step="1" value="{{ settings.get('escalation_days', '7') }}">
+                         </div>
+                         <div class="col-md-4">
+                             <label class="form-label small">Strafbetrag (€)</label>
+                             <input type="number" class="form-control form-control-sm" name="escalation_penalty" min="1" step="1" value="{{ settings.get('escalation_penalty', '5') }}">
                          </div>
                      </div>
 
@@ -1599,7 +1688,8 @@ document.addEventListener('submit', async function(e) {
                 type: txType,
                 fine_id: formData.get('fine_id'),
                 description: formData.get('description'),
-                amount: amnt
+                amount: amnt,
+                is_trainer: formData.get('is_trainer')
             };
             
             const response = await fetch('/admin/api/check_duplicate', {
@@ -1655,6 +1745,80 @@ document.addEventListener('submit', async function(e) {
         }
     }
 }, true); // Capture phase
+</script>
+
+<script>
+// ⚡ Trikotgeld-Topf Quick Adjustment Function
+function adjustGameFee(team, action) {
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    
+    const responseDiv = document.getElementById(`gamefee-response-${team}`);
+    const originalText = btn.innerHTML;
+    
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    const formData = new FormData();
+    formData.append('team', team);
+    formData.append('action', action);
+    
+    fetch('{{ url_for("adjust_game_fee_quick") }}', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCsrfToken ? getCsrfToken() : document.querySelector('[name="csrf_token"]')?.value || ''
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        
+        if (data.success) {
+            // Show success message
+            if (responseDiv) {
+                responseDiv.innerHTML = `<div class="alert alert-success alert-sm py-2 px-3 mb-0 small" role="alert">
+                    ${data.message}
+                </div>`;
+                setTimeout(() => {
+                    responseDiv.innerHTML = '';
+                }, 3000);
+            }
+            // Flash success
+            console.log('✅', data.message);
+        } else {
+            if (responseDiv) {
+                responseDiv.innerHTML = `<div class="alert alert-danger alert-sm py-2 px-3 mb-0 small" role="alert">
+                    ❌ ${data.message}
+                </div>`;
+                setTimeout(() => {
+                    responseDiv.innerHTML = '';
+                }, 3000);
+            }
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        console.error('Fehler:', err);
+        if (responseDiv) {
+            responseDiv.innerHTML = `<div class="alert alert-danger alert-sm py-2 px-3 mb-0 small" role="alert">
+                Fehler beim Senden!
+            </div>`;
+            setTimeout(() => {
+                responseDiv.innerHTML = '';
+            }, 3000);
+        }
+    });
+}
+
+// Helper: Get CSRF Token
+function getCsrfToken() {
+    return document.querySelector('input[name="csrf_token"]')?.value || 
+           document.querySelector('[name="csrf_token"]')?.content || '';
+}
 </script>
 {% endblock %}
 {% block head %}

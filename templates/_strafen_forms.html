@@ -34,6 +34,14 @@
                 <input type="number" name="multiplier" id="fine_multiplier" class="form-control" value="1" min="1">
                 <div class="form-text text-muted">Die Strafe enthält "pro", daher können Sie hier die Anzahl eingeben.</div>
             </div>
+            <div class="col-12 mt-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_trainer" value="1" id="is_trainer_catalog">
+                    <label class="form-check-label" for="is_trainer_catalog">
+                        Trainer? (Strafe verdoppeln)
+                    </label>
+                </div>
+            </div>
             <div class="col-12 mt-4">
                 <button type="submit" class="btn btn-danger w-100 py-2 fw-bold shadow-sm">Strafe buchen</button>
             </div>
@@ -76,6 +84,14 @@
                     <option value="money">€</option>
                     <option value="kistl">Kistl</option>
                 </select>
+            </div>
+            <div class="col-12 mt-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_trainer" value="1" id="is_trainer_custom">
+                    <label class="form-check-label" for="is_trainer_custom">
+                        Trainer? (Strafe verdoppeln)
+                    </label>
+                </div>
             </div>
             <div class="col-12 mt-3">
                 <button type="submit" class="btn btn-warning text-dark w-100 py-2 fw-bold shadow-sm">Individuelle Strafe buchen</button>
@@ -121,6 +137,10 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="team" value="{{ target_team_value }}">
         <input type="hidden" name="payment_category" value="fine"> <!-- ONLY Strafen -->
+
+        <div class="alert alert-info py-2 px-3 small border-0 mb-3 rounded-3">
+            <i class="bi bi-info-circle me-1"></i> Nur bei einem <strong>vollständigen Betrag</strong> werden offene Strafen zuerst getilgt. Ein Restbetrag geht ins Guthaben.
+        </div>
 
         <div class="row g-3">
             <div class="col-md-6">

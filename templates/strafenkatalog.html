@@ -131,12 +131,7 @@
 </div>
 
 {# Logik zur Bestimmung des Standard-Tabs #}
-{% set default_team1 = False %}
-{% if current_user.role in ['strafen_manager_1', 'trikot_manager_1'] %}
-    {% set default_team1 = True %}
-{% elif current_user.role == 'player' and current_user.player and current_user.player.team1 and not current_user.player.team2 %}
-    {% set default_team1 = True %}
-{% endif %}
+{# already evaluated in backend and passed as default_team1 #}
 
 <ul class="nav nav-pills nav-pills-custom mb-4" id="catalogTabs" role="tablist">
   <li class="nav-item" role="presentation">

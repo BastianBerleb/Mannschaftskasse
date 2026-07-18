@@ -407,6 +407,16 @@ html[data-theme="dark"] .nav-tabs .nav-link.active {
     color: #f1f5f9;
 }
 
+html[data-theme="dark"] .trikotdienst-tabs .nav-link {
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .trikotdienst-tabs .nav-link.active {
+    color: #f8fafc;
+    background-color: #1e293b;
+    border-color: #334155 #334155 #1e293b;
+}
+
 /* Dark Dropdowns */
 html[data-theme="dark"] .dropdown-menu {
     background-color: #1e293b;

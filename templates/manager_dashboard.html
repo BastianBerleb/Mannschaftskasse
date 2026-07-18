@@ -142,7 +142,118 @@
     <!-- TAB: TRIKOTGELD -->
     <div class="tab-pane fade show active" id="tab-trikotgeld" role="tabpanel">
 
-<!-- 1. TRIKOTGELD BUCHEN -->
+<!-- 1. EINZAHLUNG VERBUCHEN -->
+<div class="manager-card border-top border-4 border-success">
+    <h5 class="section-title"><i class="bi bi-wallet2"></i> Einzahlung verbuchen</h5>
+    <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
+          <div class="alert alert-info py-2 small mb-3 border-0">
+                 <i class="bi bi-info-circle"></i> Info: Nur bei einem <strong>vollständigen Betrag</strong> werden offene Strafen zuerst getilgt. Ein Restbetrag geht ins Trikot-Guthaben.
+          </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Spieler</label>
+                <select name="player_id" id="trikot_einzabhl_player" class="form-select searchable-select" required>
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in active_players %}
+                    <option value="{{ player.id }}">{{ player.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-bold text-main">Betrag (€)</label>
+                <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
+            </div>
+            <div class="col-12 mt-4">
+                <button type="submit" class="btn btn-success w-100 py-2 fw-bold shadow-sm">Einzahlung buchen</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 2. AUSZAHLUNG VERBUCHEN -->
+<div class="manager-card border-top border-4 border-secondary">
+    <h5 class="section-title"><i class="bi bi-cash-stack"></i> Auszahlung verbuchen</h5>
+    <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        <input type="hidden" name="payment_category" value="game_fee">
+        
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Spieler (Auszahlung an)</label>
+                <select name="player_id" id="trikot_ausz_player" class="form-select searchable-select" required>
+                    <option value="" disabled selected>-- Spieler wählen --</option>
+                    {% for player in active_players %}
+                    <option value="{{ player.id }}">{{ player.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-bold text-main">Betrag (€)</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-secondary text-white border-secondary">-</span>
+                    <!-- User enters positive amount directly -->
+                    <input type="number" name="amount" step="0.01" id="auszahlung_amt" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
+                </div>
+            </div>
+            <div class="col-12 mt-4">
+                <button type="submit" class="btn btn-secondary w-100 py-2 fw-bold shadow-sm">Auszahlung buchen</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- 3. TEAMAUSGABEN -->
+<div class="manager-card border-top border-4 border-info">
+    <h5 class="section-title"><i class="bi bi-cart"></i> Teamausgaben buchen</h5>
+    <form action="{{ url_for('add_team_expense') }}" method="POST" enctype="multipart/form-data" class="ajax-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="team" value="{{ target_team_value }}">
+        
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="small text-muted">Datum</label>
+                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-12">
+                <label class="small text-muted">Zweck / Beschreibung</label>
+                <input type="text" name="description" class="form-control" placeholder="z.B. Schiedsrichter, Pizzen, Bälle" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-bold text-main">Kosten (€)</label>
+                <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted mb-0 mt-1">Beleg (optional):</label>
+                <div class="d-flex gap-2">
+                    <div class="flex-grow-1">
+                        <input type="file" name="receipt" id="receiptFileManager" accept="image/*,.pdf" class="form-control form-control-sm" onchange="if(this.files.length > 0) { document.getElementById('receiptCamManager').value = ''; document.getElementById('camStatusManager').classList.add('d-none'); }">
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button" onclick="document.getElementById('receiptCamManager').click();" title="Kamera öffnen">
+                        <i class="bi bi-camera me-1"></i> Foto
+                    </button>
+                </div>
+                <input type="file" name="receipt_camera" id="receiptCamManager" accept="image/*" capture="environment" class="d-none" onchange="if(this.files.length > 0) { document.getElementById('receiptFileManager').value = ''; document.getElementById('camStatusManager').classList.remove('d-none'); }">
+                <div id="camStatusManager" class="small text-success mt-1 d-none fw-bold"><i class="bi bi-check-circle"></i> Foto für Upload bereit</div>
+            </div>
+            <div class="col-12 mt-4">
+                <button type="submit" class="btn btn-info text-white w-100 py-2 fw-bold shadow-sm">Ausgabe buchen</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+
+<!-- 4. TRIKOTGELD BUCHEN -->
 <div class="manager-card border-top border-4 border-primary">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="section-title mb-0"><i class="bi bi-people-fill"></i> Trikotgeld Spieltag ({{ settings.get('game_fee', '3.00') }}€)</h5>
@@ -279,116 +390,6 @@
         <button type="submit" class="btn btn-primary mt-3 w-100 py-2 fw-bold shadow-sm" id="submit-game-fee-btn">Spielgebühren buchen / beantragen</button>
         <div class="d-flex justify-content-center gap-3 mt-2 small text-muted">
             <span id="count-team1">Team 1: 0</span> <span id="count-team2">Team 2: 0</span>
-        </div>
-    </form>
-</div>
-
-<!-- 2. EINZAHLUNG VERBUCHEN -->
-<div class="manager-card border-top border-4 border-success">
-    <h5 class="section-title"><i class="bi bi-wallet2"></i> Einzahlung verbuchen</h5>
-    <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
-          <div class="alert alert-info py-2 small mb-3 border-0">
-             <i class="bi bi-info-circle"></i> Info: Einzahlungen tilgen <strong>immer zuerst offene Strafen</strong>. Der restliche Betrag geht regulär ins Trikot-Guthaben.
-          </div>
-
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label small text-muted">Datum</label>
-                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
-            </div>
-            <div class="col-12">
-                <label class="form-label small text-muted">Spieler</label>
-                <select name="player_id" id="trikot_einzabhl_player" class="form-select searchable-select" required>
-                    <option value="" disabled selected>-- Spieler wählen --</option>
-                    {% for player in active_players %}
-                    <option value="{{ player.id }}">{{ player.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-12">
-                <label class="form-label fw-bold text-main">Betrag (€)</label>
-                <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
-            </div>
-            <div class="col-12 mt-4">
-                <button type="submit" class="btn btn-success w-100 py-2 fw-bold shadow-sm">Einzahlung buchen</button>
-            </div>
-        </div>
-    </form>
-</div>
-
-<!-- 3. AUSZAHLUNG VERBUCHEN -->
-<div class="manager-card border-top border-4 border-secondary">
-    <h5 class="section-title"><i class="bi bi-cash-stack"></i> Auszahlung verbuchen</h5>
-    <form action="{{ url_for('add_payment') }}" method="POST" class="ajax-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <input type="hidden" name="team" value="{{ target_team_value }}">
-        <input type="hidden" name="payment_category" value="game_fee">
-        
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label small text-muted">Datum</label>
-                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
-            </div>
-            <div class="col-12">
-                <label class="form-label small text-muted">Spieler (Auszahlung an)</label>
-                <select name="player_id" id="trikot_ausz_player" class="form-select searchable-select" required>
-                    <option value="" disabled selected>-- Spieler wählen --</option>
-                    {% for player in active_players %}
-                    <option value="{{ player.id }}">{{ player.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-12">
-                <label class="form-label fw-bold text-main">Betrag (€)</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-secondary text-white border-secondary">-</span>
-                    <!-- User enters positive amount directly -->
-                    <input type="number" name="amount" step="0.01" id="auszahlung_amt" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
-                </div>
-            </div>
-            <div class="col-12 mt-4">
-                <button type="submit" class="btn btn-secondary w-100 py-2 fw-bold shadow-sm">Auszahlung buchen</button>
-            </div>
-        </div>
-    </form>
-</div>
-
-<!-- 4. TEAMAUSGABEN -->
-<div class="manager-card border-top border-4 border-info">
-    <h5 class="section-title"><i class="bi bi-cart"></i> Teamausgaben buchen</h5>
-    <form action="{{ url_for('add_team_expense') }}" method="POST" enctype="multipart/form-data" class="ajax-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <input type="hidden" name="team" value="{{ target_team_value }}">
-        
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="small text-muted">Datum</label>
-                <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
-            </div>
-            <div class="col-12">
-                <label class="small text-muted">Zweck / Beschreibung</label>
-                <input type="text" name="description" class="form-control" placeholder="z.B. Schiedsrichter, Pizzen, Bälle" required>
-            </div>
-            <div class="col-12">
-                <label class="form-label fw-bold text-main">Kosten (€)</label>
-                <input type="number" step="0.01" name="amount" class="form-control form-control-lg bg-light" required inputmode="decimal" placeholder="0.00" min="0" style="background-color: var(--bs-tertiary-bg) !important;">
-            </div>
-            <div class="col-12">
-                <label class="form-label small text-muted mb-0 mt-1">Beleg (optional):</label>
-                <div class="d-flex gap-2">
-                    <div class="flex-grow-1">
-                        <input type="file" name="receipt" id="receiptFileManager" accept="image/*,.pdf" class="form-control form-control-sm" onchange="if(this.files.length > 0) { document.getElementById('receiptCamManager').value = ''; document.getElementById('camStatusManager').classList.add('d-none'); }">
-                    </div>
-                    <button class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button" onclick="document.getElementById('receiptCamManager').click();" title="Kamera öffnen">
-                        <i class="bi bi-camera me-1"></i> Foto
-                    </button>
-                </div>
-                <input type="file" name="receipt_camera" id="receiptCamManager" accept="image/*" capture="environment" class="d-none" onchange="if(this.files.length > 0) { document.getElementById('receiptFileManager').value = ''; document.getElementById('camStatusManager').classList.remove('d-none'); }">
-                <div id="camStatusManager" class="small text-success mt-1 d-none fw-bold"><i class="bi bi-check-circle"></i> Foto für Upload bereit</div>
-            </div>
-            <div class="col-12 mt-4">
-                <button type="submit" class="btn btn-info text-white w-100 py-2 fw-bold shadow-sm">Ausgabe buchen</button>
-            </div>
         </div>
     </form>
 </div>
@@ -706,7 +707,8 @@ document.addEventListener('submit', async function(e) {
                 type: txType,
                 fine_id: formData.get('fine_id'),
                 description: formData.get('description'),
-                amount: amnt
+                amount: amnt,
+                is_trainer: formData.get('is_trainer')
             };
             
             const response = await fetch('/admin/api/check_duplicate', {

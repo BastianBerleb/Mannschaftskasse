@@ -244,6 +244,22 @@
     
     <h1 class="profile-name h2">{{ player.name }}</h1>
     
+    <!-- Birthday & Phone Info Row -->
+    <div class="d-flex justify-content-center gap-3 mb-3 flex-wrap small text-muted">
+        {% if player.birthday %}
+        <span>
+            <i class="bi bi-cake2"></i> 
+            {{ player.birthday.strftime('%d.%m.%Y') }}
+        </span>
+        {% endif %}
+        {% if player.phone_number %}
+        <span>
+            <i class="bi bi-telephone"></i> 
+            {{ player.phone_number }}
+        </span>
+        {% endif %}
+    </div>
+    
     <!-- Badges Row -->
     <div class="d-flex justify-content-center gap-2 mb-4 flex-wrap">
         {% if player.kistl_balance < 0 %}

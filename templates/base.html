@@ -227,6 +227,7 @@
             {% endif %}
             <li class="nav-item"><a class="nav-link" href="{{ url_for('strafenkatalog') }}">Strafenkatalog</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('geburtstage') }}">Geburtstage</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('trikotdienst') }}">Trikotdienst</a></li>
             {% if current_user.role in ['admin', 'viewer', 'trikot_manager_1', 'trikot_manager_2'] %}
 			<li class="nav-item"><a class="nav-link" href="{{ url_for('spieltag_log') }}">Spieltag-Log</a></li>
             {% endif %}
